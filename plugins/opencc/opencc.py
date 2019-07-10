@@ -27,12 +27,27 @@ __all__ = ['CONFIGS', 'convert', 'OpenCC']
 __version__ = '0.2'
 __author__ = 'Hsiaoming Yang <me@lepture.com>'
 
-_libopenccfile = os.getenv('LIBOPENCC') or find_library('opencc')
-if _libopenccfile:
-    libopencc = CDLL(_libopenccfile, use_errno=True)
+_libopenccfile = ''
+if sys.platform == 'win32':
+    moddir = os.path.dirname(__file__)
+    parentdir = os.path.dirname(moddir)
+    # Extract DLL from ZIP file
+    if parentdir.endswith('.zip'):
+        import tempfile
+        import zipfile
+        archive = zipfile.ZipFile(parentdir)
+        with archive.open('opencc/opencc.dll') as openccdll:
+            (fd, _libopenccfile) = tempfile.mkstemp(suffix='.dll')
+            with os.fdopen(fd, 'wb') as tempdll:
+                tempdll.write(openccdll.read())
+    else:
+        _libopenccfile = os.path.join(moddir, 'opencc')
 else:
-    libopencc = CDLL('libopencc.so.1', use_errno=True)
+    _libopenccfile = os.getenv('LIBOPENCC') or find_library('opencc')
+    if not _libopenccfile:
+        _libopenccfile = 'libopencc.so.1'
 
+libopencc = CDLL(_libopenccfile, use_errno=True)
 
 libopencc.opencc_open.restype = c_void_p
 libopencc.opencc_convert_utf8.argtypes = [c_void_p, c_char_p, c_size_t]
