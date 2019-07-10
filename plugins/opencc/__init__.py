@@ -36,6 +36,7 @@ from picard.ui.itemviews import (
     BaseAction,
     register_album_action,
     register_cluster_action,
+    register_file_action,
     register_track_action,
 )
 
@@ -88,8 +89,10 @@ convert_to_traditional = ConvertToTraditionalChinese()
 
 register_album_action(convert_to_simplified)
 register_cluster_action(convert_to_simplified)
+register_file_action(convert_to_simplified)
 register_track_action(convert_to_simplified)
 
 register_album_action(convert_to_traditional)
 register_cluster_action(convert_to_traditional)
+register_file_action(convert_to_traditional)
 register_track_action(convert_to_traditional)
