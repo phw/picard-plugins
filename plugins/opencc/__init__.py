@@ -22,12 +22,12 @@ PLUGIN_AUTHOR = 'Philipp Wolfer'
 PLUGIN_DESCRIPTION = ('Convert track listings between Traditional Chinese and'
                       'Simplified Chinese script.')
 PLUGIN_VERSION = "1.0.0"
-PLUGIN_API_VERSIONS = ["2.0", "2.1", "2.2"]
-PLUGIN_LICENSE = "GPL-2.0-or-later"
+PLUGIN_API_VERSIONS = ["2.0", "2.1", "2.2", "2.3"]
+PLUGIN_LICENSE = "MIT"
 PLUGIN_LICENSE_URL = "https://www.gnu.org/licenses/gpl-2.0.html"
 
 
-import opencc
+import picard.plugins.opencc.opencc
 
 from picard.album import Album
 from picard.cluster import Cluster
