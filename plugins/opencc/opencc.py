@@ -1,5 +1,6 @@
 # coding: utf-8
 # Copyright 2014-2015 Hsiaoming Yang <me@lepture.com>
+# Copyright 2019 Philipp Wolfer <ph.wolfer@gmail.com>
 #
 # All rights reserved.
 #
@@ -26,17 +27,12 @@ __all__ = ['CONFIGS', 'convert', 'OpenCC']
 __version__ = '0.2'
 __author__ = 'Hsiaoming Yang <me@lepture.com>'
 
-_libcfile = find_library('c') or 'libc.so.6'
-libc = CDLL(_libcfile, use_errno=True)
-
 _libopenccfile = os.getenv('LIBOPENCC') or find_library('opencc')
 if _libopenccfile:
     libopencc = CDLL(_libopenccfile, use_errno=True)
 else:
     libopencc = CDLL('libopencc.so.1', use_errno=True)
 
-
-libc.free.argtypes = [c_void_p]
 
 libopencc.opencc_open.restype = c_void_p
 libopencc.opencc_convert_utf8.argtypes = [c_void_p, c_char_p, c_size_t]
@@ -66,7 +62,7 @@ class OpenCC(object):
             raise Exception('OpenCC Convert Error')
         retv_c = cast(retv_i, c_char_p)
         value = retv_c.value
-        libc.free(retv_c)
+        libopencc.opencc_convert_utf8_free(retv_c)
         return value.decode('utf-8')
 
     def __del__(self):
