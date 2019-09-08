@@ -30,51 +30,48 @@ class EnzymeFile(File):
         metadata = Metadata()
         self._add_path_to_metadata(metadata)
 
-        try:
-            parser = enzyme.parse(filename)
-            log.debug("Metadata for %s:\n%s", filename, str(parser))
-            self._convertMetadata(parser, metadata)
-        except Exception as err:
-            log.error("Could not parse file %r: %r", filename, err)
+        parser = enzyme.parse(filename)
+        log.debug("Metadata for %s:\n%s", filename, str(parser))
+        self._convertMetadata(parser, metadata)
 
         return metadata
 
     def _convertMetadata(self, parser, metadata):
         metadata['~format'] = parser.type
 
-        if parser.title:
+        if hasattr(parser, 'title') and parser.title:
             metadata["title"] = parser.title
 
-        if parser.artist:
+        if hasattr(parser, 'artist') and parser.artist:
             metadata["artist"] = parser.artist
 
-        if parser.trackno:
+        if hasattr(parser, 'trackno') and parser.trackno:
             parts = parser.trackno.split("/")
             metadata["tracknumber"] = parts[0]
             if len(parts) > 1:
                 metadata["totaltracks"] = parts[1]
 
-        if parser.encoder:
+        if hasattr(parser, 'encoder') and parser.encoder:
             metadata["encodedby"] = parser.encoder
 
-        if parser.video[0]:
+        if len(parser.video) > 0:
             video = parser.video[0]
             metadata["~video"] = True
 
-        if parser.audio[0]:
+        if len(parser.audio) > 0:
             audio = parser.audio[0]
-            if audio.channels:
+            if hasattr(audio, 'channels') and audio.channels:
                 metadata["~channels"] = audio.channels
 
-            if audio.samplerate:
+            if hasattr(audio, 'samplerate') and audio.samplerate:
                 metadata["~sample_rate"] = audio.samplerate
 
-            if audio.language:
+            if hasattr(audio, 'language') and audio.language:
                 metadata["language"] = audio.language
 
-        if parser.length:
+        if hasattr(parser, 'length') and parser.length:
             metadata.length = parser.length * 1000
-        elif video and video.length:
+        elif video and hasattr(video, 'length') and video.length:
             metadata.length = parser.video[0].length * 1000
 
     def _save(self, filename, metadata):

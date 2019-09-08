@@ -58,7 +58,7 @@ def parse(path):
     parser = parser_mime or parser_ext
     if not parser:
         raise NoParserError()
-    mod = __import__(parser, globals=globals(), locals=locals(), fromlist=[], level=-1)
+    mod = __import__(parser, globals=globals(), locals=locals(), fromlist=[], level=1)
     with open(path, 'rb') as f:
         p = mod.Parser(f)
     return p

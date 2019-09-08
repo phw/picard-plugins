@@ -82,7 +82,7 @@ class Media(object):
     # unicode and string convertion for debugging
     #
     #TODO: Fix that mess
-    def __unicode__(self):
+    def __str__(self):
         result = ''
 
         # print normal attributes
@@ -94,7 +94,7 @@ class Media(object):
             if isinstance(value, list):
                 if not value:
                     continue
-                elif isinstance(value[0], basestring):
+                elif isinstance(value[0], str):
                     # Just a list of strings (keywords?), so don't treat it specially.
                     value = ', '.join(value)
                 else:
@@ -105,7 +105,7 @@ class Media(object):
                 continue
             if key in UNPRINTABLE_KEYS:
                 value = '<unprintable data, size=%d>' % len(value)
-            result += '| %10s: %s\n' % (unicode(key), unicode(value))
+            result += '| %10s: %s\n' % (str(key), str(value))
 
         # print tags (recursively, to support nested tags).
         def print_tags(tags, suffix, show_label):
@@ -129,7 +129,7 @@ class Media(object):
                 if key not in ['tracks', 'subtitles', 'chapters']:
                     label += ' Track'
                 result += '%s #%d\n' % (label, n + 1)
-                result += '|    ' + re.sub(r'\n(.)', r'\n|    \1', unicode(item))
+                result += '|    ' + re.sub(r'\n(.)', r'\n|    \1', str(item))
 
         # print tables
         #FIXME: WTH?
@@ -138,7 +138,7 @@ class Media(object):
 #                result += '+-- Table %s\n' % str(name)
 #                for key, value in table.items():
 #                    try:
-#                        value = unicode(value)
+#                        value = str(value)
 #                        if len(value) > 50:
 #                            value = '<unprintable data, size=%d>' % len(value)
 #                    except (UnicodeDecodeError, TypeError):
@@ -146,11 +146,8 @@ class Media(object):
 #                            value = '<unprintable data, size=%d>' % len(value)
 #                        except AttributeError:
 #                            value = '<unprintable data>'
-#                    result += '|    | %s: %s\n' % (unicode(key), value)
+#                    result += '|    | %s: %s\n' % (str(key), value)
         return result
-
-    def __str__(self):
-        return unicode(self).encode()
 
     def __repr__(self):
         if hasattr(self, 'url'):
@@ -314,9 +311,6 @@ class Tag(object):
         self.value = value
         self.langcode = langcode
         self.binary = binary
-
-    def __unicode__(self):
-        return unicode(self.value)
 
     def __str__(self):
         return str(self.value)

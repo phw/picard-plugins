@@ -335,7 +335,7 @@ class Asf(core.AVContainer):
             for i in range(0, count):
                 idlen = struct.unpack('<B', s[pos:pos + 1])[0]
                 idstring = s[pos + 1:pos + 1 + idlen]
-                idstring = unicode(idstring, 'utf-16').replace('\0', '')
+                idstring = str(idstring).encode('utf-16').replace(b'\0', b'')
                 log.debug('Language: %d/%d: %r' % (i + 1, count, idstring))
                 self._languages.append(idstring)
                 pos += 1 + idlen

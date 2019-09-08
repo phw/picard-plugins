@@ -31,7 +31,7 @@ def resolve(code):
     """
     if not code:
         return None, None
-    if not isinstance(code, basestring):
+    if not isinstance(code, str):
         raise ValueError('Invalid language code specified by parser')
 
     # Take up to 3 letters from the code.

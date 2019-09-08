@@ -149,7 +149,7 @@ def matroska_date_to_datetime(date):
     #   The fields with dates should have the following format: YYYY-MM-DD
     #   HH:MM:SS.MSS [...] To store less accuracy, you remove items starting
     #   from the right. To store only the year, you would use, "2004". To store
-    #   a specific day such as May 1st, 2003, you would use "2003-05-01". 
+    #   a specific day such as May 1st, 2003, you would use "2003-05-01".
     format = re.split(r'([-:. ])', '%Y-%m-%d %H:%M:%S.%f')
     while format:
         try:
@@ -248,7 +248,7 @@ class EbmlEntity:
         self.value = 0
         if self.entity_len <= 8:
             for pos, shift in zip(range(self.entity_len), range((self.entity_len - 1) * 8, -1, -8)):
-                self.value |= ord(self.entity_data[pos]) << shift
+                self.value |= self.entity_data[pos] << shift
 
 
     def add_data(self, data):
@@ -263,7 +263,7 @@ class EbmlEntity:
         self.id_len = 0
         if len(inbuf) < 1:
             return 0
-        first = ord(inbuf[0])
+        first = inbuf[0]
         if first & 0x80:
             self.id_len = 1
             self.entity_id = first
@@ -271,19 +271,19 @@ class EbmlEntity:
             if len(inbuf) < 2:
                 return 0
             self.id_len = 2
-            self.entity_id = ord(inbuf[0]) << 8 | ord(inbuf[1])
+            self.entity_id = inbuf[0] << 8 | inbuf[1]
         elif first & 0x20:
             if len(inbuf) < 3:
                 return 0
             self.id_len = 3
-            self.entity_id = (ord(inbuf[0]) << 16) | (ord(inbuf[1]) << 8) | \
-                             (ord(inbuf[2]))
+            self.entity_id = (inbuf[0] << 16) | (inbuf[1] << 8) | \
+                             (inbuf[2])
         elif first & 0x10:
             if len(inbuf) < 4:
                 return 0
             self.id_len = 4
-            self.entity_id = (ord(inbuf[0]) << 24) | (ord(inbuf[1]) << 16) | \
-                             (ord(inbuf[2]) << 8) | (ord(inbuf[3]))
+            self.entity_id = (inbuf[0] << 24) | (inbuf[1] << 16) | \
+                             (inbuf[2] << 8) | (inbuf[3])
         self.entity_str = inbuf[0:self.id_len]
 
 
@@ -292,7 +292,7 @@ class EbmlEntity:
             return 0, 0
         i = num_ffs = 0
         len_mask = 0x80
-        len = ord(inbuf[0])
+        len = inbuf[0]
         while not len & len_mask:
             i += 1
             len_mask >>= 1
@@ -303,7 +303,7 @@ class EbmlEntity:
         if len == len_mask - 1:
             num_ffs += 1
         for p in range(i):
-            len = (len << 8) | ord(inbuf[p + 1])
+            len = (len << 8) | inbuf[p + 1]
             if len & 0xff == 0xff:
                 num_ffs += 1
         if num_ffs == i + 1:
@@ -332,11 +332,11 @@ class EbmlEntity:
 
 
     def get_utf8(self):
-        return unicode(self.entity_data, 'utf-8', 'replace')
+        return self.entity_data.decode('utf-8', 'replace')
 
 
     def get_str(self):
-        return unicode(self.entity_data, 'ascii', 'replace')
+        return self.entity_data.decode('ascii', 'replace')
 
 
     def get_id(self):
