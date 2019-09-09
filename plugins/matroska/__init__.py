@@ -88,6 +88,7 @@ class MatroskaFile(File):
                 else:
                     metadata[name_lower] = tag.string_val
 
+        self._info(metadata, f)
         return metadata
 
     def _save(self, filename, metadata):
@@ -108,5 +109,11 @@ class MatroskaFile(File):
             tags[name.upper()] = values[0]
 
         f.save(filename)
+
+    def _info(self, metadata, file):
+        super()._info(metadata, file)
+        if file.info.doc_type == 'webm':
+            metadata['~format'] = 'WebM'
+
 
 register_format(MatroskaFile)
