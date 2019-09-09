@@ -25,6 +25,7 @@ PLUGIN_LICENSE_URL = "https://www.gnu.org/licenses/gpl-3.0.html"
 
 import re
 
+from picard import config
 from picard import log
 from picard.file import File
 from picard.formats import register_format
@@ -96,7 +97,9 @@ class MatroskaFile(File):
         f = self._File(filename)
         tags = f.tags
 
-        # TODO: Clear tags
+        if config.setting['clear_existing_tags']:
+            # tags.delete()
+            tags.clear()
 
         for name, values in metadata.rawitems():
             if name.startswith("~") or not self.supports_tag(name):

@@ -76,8 +76,8 @@ class EbmlInfo(StreamInfo):
 
 
 class EbmlTags(DictProxy, Metadata):
-    @loadfile()
     @convert_error(IOError, error)
+    @loadfile()
     def load(self, filething):
         ebml_file = File(filething.fileobj)
         segment = ebml_file.child_named('Segment')
@@ -88,8 +88,8 @@ class EbmlTags(DictProxy, Metadata):
         if tags:
             self._read_tags(tags)
 
-    @loadfile(writable=True, create=True)
     @convert_error(IOError, error)
+    @loadfile(writable=True, create=True)
     def save(self, filething=None):
         ebml_file = File(filething.fileobj)
         ebml = ebml_file.child_named('EBML')
@@ -100,10 +100,23 @@ class EbmlTags(DictProxy, Metadata):
         tags = self._find_file_tags(tags_list)
         if not tags:
             tags = ElementTag.new_with_value(50, 'ALBUM', parent=tags_list)
+            # tags = ElementTag.new('Tag', parent=tags_list)
         self._write_tags(tags)
         segment.normalize()
         ebml_file.rearrange()
         ebml_file.save_changes(filething.fileobj)
+
+    @convert_error(IOError, error)
+    @loadfile(writable=True)
+    def delete(self, filething=None):
+        """Remove tags from a file."""
+        ebml_file = File(filething.fileobj)
+        segment = ebml_file.child_named('Segment')
+        segment.remove_children_named('Tags')
+        segment.normalize()
+        ebml_file.rearrange()
+        ebml_file.save_changes(filething.fileobj)
+        self.clear()
 
     def __setitem__(self, key, value):
         if not isinstance(value, ElementSimpleTag):
@@ -116,10 +129,10 @@ class EbmlTags(DictProxy, Metadata):
             return None
         for child in tags.children_named('Tag'):
             # Search for a tag with target type 50 (album level)
-            # without target elements (applies to entire file).
+            # or without target elements (applies to entire file).
             # FIXME: Allow setting tags for other target types
             # (e.g. track level)
-            if child.target_type_value == 50 and len(child.targets) == 0:
+            if child.target_type_value == 50 or len(child.targets) == 0:
                 return child
         return None
 
@@ -140,10 +153,25 @@ class EbmlTags(DictProxy, Metadata):
                 else:
                     simple_tag.string_val = self[name].string_val
                 simple_tag.language = self[name].language
+            else:
+                element_tag.remove_child(simple_tag)
         # Add new tags
         new_keys = set(self.keys()).difference(existing_keys)
         for name in new_keys:
             element_tag.add_child(self[name])
+        # If no tags remaining, remove tag element
+        if not len(list(element_tag.simple_tags)):
+            tags = element_tag.parent
+            tags.remove_child(element_tag)
+            self._remove_container_if_empty(tags)
+
+    @classmethod
+    def _remove_container_if_empty(cls, container):
+        if not len(container):
+            parent = container.parent
+            parent.remove_child(container)
+            cls._remove_container_if_empty(parent)
+
 
 
 class EbmlFile(FileType):
