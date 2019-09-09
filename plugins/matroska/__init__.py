@@ -69,22 +69,23 @@ class MatroskaFile(File):
         metadata = Metadata()
 
         for name, tag in f.tags.items():
-            if tag.string_val:
-                name_lower = tag.tag_name.lower()
-                if name_lower == 'disc':
-                    (discnumber, totaldiscs) = parse_parts(tag.string_val)
-                    metadata['discnumber'] = discnumber
-                    if totaldiscs:
-                        metadata['totaldiscs'] = totaldiscs
-                elif name_lower == 'part_number':
-                    (tracknumber, totaltracks) = parse_parts(tag.string_val)
-                    metadata['tracknumber'] = tracknumber
-                    if totaltracks:
-                        metadata['totaltracks'] = totaltracks
-                elif name_lower in self.__TRANS:
-                    metadata[self.__TRANS[name_lower]] = tag.string_val
-                else:
-                    metadata[name_lower] = tag.string_val
+            if not tag.string_val:
+                continue
+            name_lower = tag.tag_name.lower()
+            if name_lower == 'disc':
+                (discnumber, totaldiscs) = parse_parts(tag.string_val)
+                metadata['discnumber'] = discnumber
+                if totaldiscs:
+                    metadata['totaldiscs'] = totaldiscs
+            elif name_lower == 'part_number':
+                (tracknumber, totaltracks) = parse_parts(tag.string_val)
+                metadata['tracknumber'] = tracknumber
+                if totaltracks:
+                    metadata['totaltracks'] = totaltracks
+            elif name_lower in self.__TRANS:
+                metadata[self.__TRANS[name_lower]] = tag.string_val
+            else:
+                metadata[name_lower] = tag.string_val
 
         self._info(metadata, f)
         return metadata
@@ -95,7 +96,11 @@ class MatroskaFile(File):
         f = self._File(filename)
         tags = f.tags
 
+        # TODO: Clear tags
+
         for name, values in metadata.rawitems():
+            if name.startswith("~") or not self.supports_tag(name):
+                continue
             if name in self.__RTRANS:
                 name = self.__RTRANS[name]
             else:
@@ -103,8 +108,11 @@ class MatroskaFile(File):
                 name = re.sub(r'\s+', '_', name)
             # Tags are always stored uppercase, see
             # https://www.matroska.org/technical/specs/tagging/index.html
-            # FIXME: Support multiple tags
+            # TODO: Support multiple tags
             tags[name.upper()] = values[0]
+
+        # TODO: Save cover art
+        # TODO: Remove deleted tags
 
         f.save(filename)
 
