@@ -1,3 +1,20 @@
+# -*- coding: utf-8 -*-
+#
+# Copyright (C) 2019 Philipp Wolfer
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+
 from mutagen import (
     FileType,
     Metadata,
@@ -5,11 +22,21 @@ from mutagen import (
 )
 from mutagen._util import (
     DictProxy,
+    MutagenError,
+    convert_error,
     loadfile,
 )
 
 from .ebml.container import File
-from .ebml.data_elements import ElementSimpleTag
+from .ebml.data_elements import (
+    ElementMaster,
+    ElementSimpleTag,
+    ElementTag,
+)
+
+
+class error(MutagenError):
+    pass
 
 
 class EbmlInfo(StreamInfo):
@@ -33,8 +60,8 @@ class EbmlInfo(StreamInfo):
 
     def __init__(self, ebml_file, segment):
         self.length = segment.duration
-        ebml_master = next(ebml_file.children_named('EBML'))
-        self.doc_type = ebml_master.doc_type
+        ebml = ebml_file.child_named('EBML')
+        self.doc_type = ebml.doc_type
         tracks = segment.tracks_bytype
         if 'audio' in tracks:
             first_audio = tracks['audio'][0].audio
@@ -50,23 +77,32 @@ class EbmlInfo(StreamInfo):
 
 class EbmlTags(DictProxy, Metadata):
     @loadfile()
+    @convert_error(IOError, error)
     def load(self, filething):
         ebml_file = File(filething.fileobj)
-        segment = next(ebml_file.children_named('Segment'))
+        segment = ebml_file.child_named('Segment')
         # print(ebml_file.summary())
         self.info = EbmlInfo(ebml_file, segment)
-        tags_list = self._try_get_child(segment, 'Tags') or []
+        tags_list = segment.child_named('Tags')
         tags = self._find_file_tags(tags_list)
         if tags:
             self._read_tags(tags)
 
     @loadfile(writable=True, create=True)
+    @convert_error(IOError, error)
     def save(self, filething=None):
         ebml_file = File(filething.fileobj)
-        segment = next(ebml_file.children_named('Segment'))
-        tags_list = self._try_get_child(segment, 'Tags') or []
+        ebml = ebml_file.child_named('EBML')
+        segment = ebml_file.child_named('Segment')
+        tags_list = segment.child_named('Tags')
+        if not tags_list:
+            tags_list = ElementMaster.new('Tags', segment, 0)
         tags = self._find_file_tags(tags_list)
+        if not tags:
+            tags = ElementTag.new_with_value(50, 'ALBUM', parent=tags_list)
         self._write_tags(tags)
+        segment.normalize()
+        ebml_file.rearrange()
         ebml_file.save_changes(filething.fileobj)
 
     def __setitem__(self, key, value):
@@ -76,20 +112,16 @@ class EbmlTags(DictProxy, Metadata):
 
     @staticmethod
     def _find_file_tags(tags):
-        for child in tags:
+        if not tags:
+            return None
+        for child in tags.children_named('Tag'):
             # Search for a tag with target type 50 (album level)
             # without target elements (applies to entire file).
-            # FIXME: Allow setting tags for other target types (e.g. track level)
+            # FIXME: Allow setting tags for other target types
+            # (e.g. track level)
             if child.target_type_value == 50 and len(child.targets) == 0:
                 return child
         return None
-
-    @staticmethod
-    def _try_get_child(element, child_name):
-        try:
-            return next(element.children_named(child_name))
-        except StopIteration:
-            return None
 
     def _read_tags(self, element_tag):
         for simple_tag in element_tag.simple_tags:
