@@ -81,7 +81,8 @@ class OpenCC(object):
         return value.decode('utf-8')
 
     def __del__(self):
-        libopencc.opencc_close(self._od)
+        if libopencc:
+            libopencc.opencc_close(self._od)
 
 
 def convert(text, config='t2s.json'):
