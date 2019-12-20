@@ -32,15 +32,19 @@ PLUGIN_DESCRIPTION = ('Convert track listings between Traditional Chinese and '
                       '<ul><li><code>$convert_to_simplified_chinese(text)</code></li>'
                       '<li><code>$convert_to_traditional_chinese(text)</code></li></ul>'
                       )
-PLUGIN_VERSION = "1.1.2"
+PLUGIN_VERSION = "1.1.3"
 PLUGIN_API_VERSIONS = ["2.0", "2.1", "2.2", "2.3"]
 PLUGIN_LICENSE = "MIT"
 PLUGIN_LICENSE_URL = "https://opensource.org/licenses/MIT"
 
 
+from picard import log
 from picard.album import Album
 from picard.cluster import Cluster
-from picard.plugins.opencc.opencc import OpenCC
+from picard.plugins.opencc.opencc import (
+    ConversionError,
+    OpenCC,
+)
 from picard.script import register_script_function
 from picard.track import Track
 from picard.ui.itemviews import (
@@ -62,10 +66,14 @@ class ConvertChineseAction(BaseAction):
             self.convert_object_metadata(obj)
 
     def convert(self, text):
-        return self.converter.convert(text)
+        try:
+            return self.converter.convert(text)
+        except (ConversionError) as e:
+            log.exception('opencc: %r', e)
+            return text
 
     def convert_metadata(self, m):
-        for key, value in m.items():
+        for key, value in list(m.items()):
             m[key] = self.convert(value)
 
     def convert_object_metadata(self, obj):

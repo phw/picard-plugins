@@ -16,7 +16,14 @@ from __future__ import absolute_import, unicode_literals
 import os
 import sys
 from ctypes.util import find_library
-from ctypes import CDLL, cast, c_char_p, c_size_t, c_void_p
+from ctypes import (
+    CDLL,
+    c_char_p,
+    c_size_t,
+    c_void_p,
+    cast,
+    create_string_buffer,
+)
 
 if sys.version_info[0] == 3:
     text_type = str
@@ -49,9 +56,11 @@ else:
 
 libopencc = CDLL(_libopenccfile, use_errno=True)
 
+libopencc.opencc_open.argtypes = [c_char_p]
 libopencc.opencc_open.restype = c_void_p
-libopencc.opencc_convert_utf8.argtypes = [c_void_p, c_char_p, c_size_t]
-libopencc.opencc_convert_utf8.restype = c_void_p
+libopencc.opencc_convert_utf8_to_buffer.argtypes = [
+    c_void_p, c_char_p, c_size_t, c_char_p]
+libopencc.opencc_convert_utf8_to_buffer.restype = c_size_t
 libopencc.opencc_close.argtypes = [c_void_p]
 
 CONFIGS = [
@@ -62,23 +71,29 @@ CONFIGS = [
 ]
 
 
+class ConversionError(Exception):
+    pass
+
+
 class OpenCC(object):
 
     def __init__(self, config='t2s.json'):
-        self._od = libopencc.opencc_open(c_char_p(config.encode('utf-8')))
+        self._od = libopencc.opencc_open(config.encode('utf-8'))
 
     def convert(self, text):
         if isinstance(text, text_type):
             # use bytes
             text = text.encode('utf-8')
 
-        retv_i = libopencc.opencc_convert_utf8(self._od, text, len(text))
-        if retv_i == -1:
-            raise Exception('OpenCC Convert Error')
-        retv_c = cast(retv_i, c_char_p)
-        value = retv_c.value
-        libopencc.opencc_convert_utf8_free(retv_c)
-        return value.decode('utf-8')
+        try:
+            buffer = create_string_buffer(text)
+            result = libopencc.opencc_convert_utf8_to_buffer(
+                self._od, text, len(text), buffer)
+        except OSError:
+            raise ConversionError('OpenCC Convert Error: "%s"' % text)
+        if result == -1:
+            raise ConversionError('OpenCC Convert Error: "%s"' % text)
+        return buffer.value.decode('utf-8')
 
     def __del__(self):
         if libopencc:
