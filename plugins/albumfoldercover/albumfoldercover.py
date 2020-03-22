@@ -31,8 +31,6 @@ import subprocess
 import tempfile
 from functools import partial
 
-from PyQt5 import QtCore
-
 from picard import log
 from picard.file import register_file_post_save_processor
 from picard.const.sys import IS_MACOS
@@ -83,6 +81,8 @@ if IS_MACOS:
     def set_folder_icon(folder_path, rsrc_filepath):
         # See also https://stackoverflow.com/questions/8371790/how-to-set-icon-on-file-or-directory-using-cli-on-os-x
         icon_filepath = os.path.join(folder_path, "Icon\r")
+        if os.path.isfile(icon_filepath):
+            os.unlink(icon_filepath)
         # Append the icon data as extended attribute "com.apple.ResourceFork"
         # to a special icon file
         subprocess.check_call(['Rez', '-append', rsrc_filepath, '-o', icon_filepath])
@@ -91,31 +91,28 @@ if IS_MACOS:
         # Hide the special icon file
         subprocess.check_call(['SetFile', '-a', 'V', icon_filepath])
 
-    def set_album_folder_cover(file):
-        if not file.parent or not file.parent.album:
-            return
-
+    def on_file_save_processor(file):
         album = file.parent.album
         cover_image = album.metadata.images.get_front_image()
         if not cover_image:
             return
 
-        with tempfile.TemporaryDirectory() as tempdir:
-            icns_filepath = generate_icns(tempdir, cover_image)
-            rsrc_filepath = generate_rsrc(tempdir, icns_filepath)
-            set_folder_icon(os.path.dirname(file.filename), rsrc_filepath)
+        image_hash = hash(cover_image)
+        log.debug("albumfoldercover: image hash: %r, saved hash: %r",
+            image_hash, album.metadata['~albumfoldercoverhash'])
+        if image_hash and album.metadata['~albumfoldercoverhash'] == str(image_hash):
+            return
 
-    def set_album_folder_cover_finished(file, result=None, error=None):
-        if error:
-            log.error('albumfoldercover: setting folder icon for %s failed: %r' % (
-                file.filename, error))
-        else:
-            log.debug('albumfoldercover: folder icon set for %s' % file.filename)
+        try:
+            with tempfile.TemporaryDirectory() as tempdir:
+                icns_filepath = generate_icns(tempdir, cover_image)
+                rsrc_filepath = generate_rsrc(tempdir, icns_filepath)
+                set_folder_icon(os.path.dirname(file.filename), rsrc_filepath)
+                album.metadata['~albumfoldercoverhash'] = image_hash
+        except (FileNotFoundError, subprocess.CalledProcessError) as err:
+            log.error('albumfoldercover: setting folder icon for %s failed: %r',
+                file.filename, err)
 
-    def on_file_save_processor(file):
-        thread.run_task(
-            partial(set_album_folder_cover, file),
-            partial(set_album_folder_cover_finished, file))
 
     register_file_post_save_processor(on_file_save_processor)
 
