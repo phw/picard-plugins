@@ -92,6 +92,9 @@ if IS_MACOS:
         subprocess.check_call(['SetFile', '-a', 'V', icon_filepath])
 
     def on_file_save_processor(file):
+        if not file.parent or not hasattr(file.parent, 'album') or not file.parent.album:
+            return
+
         album = file.parent.album
         cover_image = album.metadata.images.get_front_image()
         if not cover_image:
