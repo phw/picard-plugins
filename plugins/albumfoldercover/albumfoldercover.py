@@ -19,22 +19,33 @@
 
 PLUGIN_NAME = 'Album Folder Cover'
 PLUGIN_AUTHOR = 'Philipp Wolfer'
-PLUGIN_DESCRIPTION = 'Set the folder icon to the album cover on macOS'
-PLUGIN_VERSION = "0.0.1"
-PLUGIN_API_VERSIONS = ["2.2", "2.3"]
+PLUGIN_DESCRIPTION = 'Set the folder icon to the album cover on macOS and Linux'
+PLUGIN_VERSION = "0.1.0"
+PLUGIN_API_VERSIONS = ["2.2", "2.3", "2.4", "2.5"]
 PLUGIN_LICENSE = "GPL-2.0-or-later"
 PLUGIN_LICENSE_URL = "https://www.gnu.org/licenses/gpl-2.0.html"
 
 
+from collections import defaultdict
 import os
+import shutil
 import subprocess
 import tempfile
 from functools import partial
 
-from picard import log
+from picard import (
+    config,
+    log,
+)
+from picard.const.sys import (
+    IS_LINUX,
+    IS_MACOS,
+)
 from picard.file import register_file_post_save_processor
-from picard.const.sys import IS_MACOS
-from picard.util import thread
+from picard.util import (
+    decode_filename,
+    encode_filename,
+)
 
 if IS_MACOS:
     ICON_SIZES = [
@@ -96,8 +107,12 @@ if IS_MACOS:
             return
 
         album = file.parent.album
-        cover_image = album.metadata.images.get_front_image()
+        cover_image = (album.metadata.images.get_front_image()
+                       or file.parent.metadata.images.get_front_image()
+                       or file.metadata.images.get_front_image()
+                       or file.orig_metadata.images.get_front_image())
         if not cover_image:
+            log.debug('albumfoldercover: no cover image for %r', album)
             return
 
         image_hash = hash(cover_image)
@@ -119,5 +134,61 @@ if IS_MACOS:
 
     register_file_post_save_processor(on_file_save_processor)
 
+elif IS_LINUX:
+    # gio set Medusa metadata::custom-icon file:///home/phw/Musik/Library/Paradise%20Lost/Medusa/AlbumArt.jpg
+    gio = shutil.which('gio')
+
+    if not gio:
+        log.warning('albumfoldercover: this plugin requires gio')
+
+    def get_cover_image_path(folder_path, image, metadata):
+        filename = config.setting["cover_image_filename"]
+        image_filepath = decode_filename(image._make_image_filename(filename, folder_path, metadata))
+        image_filepath += image.extension
+        if not os.path.exists(image_filepath) or not config.setting["save_images_to_files"]:
+            counters = defaultdict(lambda: 0)
+            image.save(folder_path, metadata, counters)
+            saved_filepath = image_filepath
+            image_filepath = os.path.join(folder_path, '.cover' + image.extension)
+            shutil.move(saved_filepath, image_filepath)
+        return image_filepath
+
+    def set_folder_icon(folder_path, image_filepath):
+        log.debug('albumfoldercover: Setting cover for %r to %r',
+            folder_path, image_filepath)
+        image_filepath = 'file://' + image_filepath
+        subprocess.check_call([gio, 'set', folder_path, 'metadata::custom-icon', image_filepath])
+
+    def on_file_save_processor(file):
+        if not file.parent or not hasattr(file.parent, 'album') or not file.parent.album:
+            return
+
+        album = file.parent.album
+        cover_image = (album.metadata.images.get_front_image()
+                       or file.parent.metadata.images.get_front_image()
+                       or file.metadata.images.get_front_image()
+                       or file.orig_metadata.images.get_front_image())
+        if not cover_image:
+            log.debug('albumfoldercover: no cover image for %r', album)
+            return
+
+        image_hash = hash(cover_image)
+        log.debug("albumfoldercover: image hash: %r, saved hash: %r",
+            image_hash, album.metadata['~albumfoldercoverhash'])
+        if image_hash and album.metadata['~albumfoldercoverhash'] == str(image_hash):
+            return
+
+        try:
+            album_folder = os.path.dirname(file.filename)
+            image_filepath = get_cover_image_path(album_folder, cover_image, album.metadata)
+            set_folder_icon(album_folder, image_filepath)
+            album.metadata['~albumfoldercoverhash'] = image_hash
+        except (subprocess.CalledProcessError) as err:
+            log.error('albumfoldercover: setting folder icon for %s failed: %r',
+                file.filename, err)
+
+    if gio:
+        register_file_post_save_processor(on_file_save_processor)
+
 else:
-    log.warning('albumfoldercover: this plugin is only for the macOS operating system')
+    log.warning('albumfoldercover: this plugin is not supported on this operating system')
