@@ -1,0 +1,3 @@
+[submodule "plugins/matroska/ebml"]
+	path = plugins/matroska/ebml
+	url = https://github.com/QBobWatson/python-ebml.git
