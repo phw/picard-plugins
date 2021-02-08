@@ -21,9 +21,12 @@ PLUGIN_NAME = "TagRequester"
 PLUGIN_AUTHOR = "Philipp Wolfer"
 PLUGIN_DESCRIPTION = (
     'Use the TagRequester audio fingerprinting to fill basic tags.<br><br>'
-    'Requires installing and running <a href="http://www.peter-ebe.com/TagRequester/info/tagrequester_download_en.php">TagRequester</a>.'
+    'Windows only, requires installing and running '
+    '<a href="http://www.peter-ebe.com/TagRequester/info/tagrequester_download_en.php">TagRequester</a>. '
+    'Supports setting the <tt>title</tt>, <tt>artist</tt>, <tt>album</tt>, '
+    '<tt>tracknumber</tt>, <tt>date</tt> and <tt>genre</tt> tags.'
 )
-PLUGIN_VERSION = '0.2'
+PLUGIN_VERSION = '0.3'
 PLUGIN_API_VERSIONS = ['2.5', '2.6']
 PLUGIN_LICENSE = "GPL-2.0-or-later"
 PLUGIN_LICENSE_URL = "https://www.gnu.org/licenses/gpl-2.0.html"
@@ -62,7 +65,7 @@ TAG_MAPPING = {
     'YEAR': 'date',
     'GENRE': 'genre',
     'BPM': 'bpm',
-    # 'SYNPOS': '?',  # FIXME: What's this?
+    # 'SYNPOS': '?',
 }
 
 
@@ -130,23 +133,25 @@ class TagRequesterAction(BaseAction):
 
     def callback(self, objs):
         for file in iter_files_from_objects(objs):
+            file.set_pending()
             request = TagRequesterQuery(file)
             thread.run_task(request, partial(self.handle_response, file))
 
     def handle_response(self, file: File, result=None, error=None):
         if error:
+            file.clear_pending()
             log.error('[TagRequester] Error: %s', error)
             self.tagger.window.set_statusbar_message(
                 'TagRequester failed: %s', error)
             return
         metadata = self.xml_to_metadata(result)
-        thread.to_main(partial(self.update_metadata, file, metadata))
+        self.update_metadata(file, metadata)
 
     def update_metadata(self, file: File, metadata: Metadata):
         self.tagger.window.set_statusbar_message(
             'TagRequester found metadata for %s', file.filename)
         file.metadata.update(metadata)
-        file.update()
+        file.clear_pending()
 
     @staticmethod
     def xml_to_metadata(node: XmlNode) -> Metadata:
