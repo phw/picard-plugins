@@ -22,17 +22,19 @@
 
 PLUGIN_NAME = 'Chinese script conversion'
 PLUGIN_AUTHOR = 'Philipp Wolfer'
-PLUGIN_DESCRIPTION = ('Convert track listings between Traditional Chinese and '
-                      'Simplified Chinese script.<br><br>'
-                      'The conversion can be done manually or with scripting. '
-                      'For manual use right click on album, tracks, clusters '
-                      'or files and choose the "Convert to Simplified Chinese" '
-                      'or "Convert to Simplified Chinese" action.<br><br>'
-                      'For scripting you can use the following tagger functions:'
-                      '<ul><li><code>$convert_to_simplified_chinese(text)</code></li>'
-                      '<li><code>$convert_to_traditional_chinese(text)</code></li></ul>'
-                      )
-PLUGIN_VERSION = "1.2"
+PLUGIN_DESCRIPTION = """
+Convert track listings between Traditional Chinese and Simplified Chinese script.
+
+The conversion can be done manually or with scripting. For manual use right click
+on album, tracks, clusters or files and choose the "Convert to Simplified Chinese"
+or "Convert to Simplified Chinese" action.
+
+For scripting you can use the following tagger functions:
+
+- `$convert_to_simplified_chinese(text)`
+- `$convert_to_traditional_chinese(text)`
+"""
+PLUGIN_VERSION = "1.3"
 PLUGIN_API_VERSIONS = ["2.0", "2.1", "2.2", "2.3", "2.4", "2.5", "2.6"]
 PLUGIN_LICENSE = "MIT"
 PLUGIN_LICENSE_URL = "https://opensource.org/licenses/MIT"
