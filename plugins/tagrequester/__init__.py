@@ -26,12 +26,13 @@ PLUGIN_DESCRIPTION = (
     'Supports setting the <tt>title</tt>, <tt>artist</tt>, <tt>album</tt>, '
     '<tt>tracknumber</tt>, <tt>date</tt> and <tt>genre</tt> tags.'
 )
-PLUGIN_VERSION = '0.3'
+PLUGIN_VERSION = '0.4'
 PLUGIN_API_VERSIONS = ['2.5', '2.6']
 PLUGIN_LICENSE = "GPL-2.0-or-later"
 PLUGIN_LICENSE_URL = "https://www.gnu.org/licenses/gpl-2.0.html"
 
 from functools import partial
+from html import escape
 from io import FileIO
 from time import sleep
 
@@ -39,7 +40,6 @@ from picard import log
 from picard.file import File
 from picard.metadata import Metadata
 from picard.util import (
-    htmlescape,
     iter_files_from_objects,
     thread,
 )
@@ -112,7 +112,7 @@ class TagRequesterQuery:
             raise TagRequesterError('Failed accessing named pipe %s' % self.TAG_REQUESTER_PIPE)
 
     def _build_request(self) -> bytes:
-        filename = htmlescape(self.file.filename).encode('utf-8')
+        filename = escape(self.file.filename).encode('utf-8')
         return (b'<?xml version="1.0" encoding="UTF-8"?>\n'
                 b'<clientapi><FILENAME>%s</FILENAME></clientapi>') % filename
 
