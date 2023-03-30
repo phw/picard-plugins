@@ -20,8 +20,8 @@
 PLUGIN_NAME = 'Album Folder Cover'
 PLUGIN_AUTHOR = 'Philipp Wolfer'
 PLUGIN_DESCRIPTION = 'Set the folder icon to the album cover on macOS and Linux'
-PLUGIN_VERSION = "0.1.0"
-PLUGIN_API_VERSIONS = ["2.2", "2.3", "2.4", "2.5"]
+PLUGIN_VERSION = "0.1.1"
+PLUGIN_API_VERSIONS = ["2.9"]
 PLUGIN_LICENSE = "GPL-2.0-or-later"
 PLUGIN_LICENSE_URL = "https://www.gnu.org/licenses/gpl-2.0.html"
 
@@ -143,7 +143,10 @@ elif IS_LINUX:
 
     def get_cover_image_path(folder_path, image, metadata):
         filename = config.setting["cover_image_filename"]
-        image_filepath = decode_filename(image._make_image_filename(filename, folder_path, metadata))
+        win_compat = config.setting["windows_compatibility"]
+        win_shorten_path = win_compat and not config.setting['windows_long_paths']
+        image_filepath = decode_filename(image._make_image_filename(
+            filename, folder_path, metadata, win_compat, win_shorten_path))
         image_filepath += image.extension
         if not os.path.exists(image_filepath) or not config.setting["save_images_to_files"]:
             counters = defaultdict(lambda: 0)
@@ -181,6 +184,7 @@ elif IS_LINUX:
         try:
             album_folder = os.path.dirname(file.filename)
             image_filepath = get_cover_image_path(album_folder, cover_image, album.metadata)
+            log.debug("albumfoldercover: saving cover to %s", image_filepath)
             set_folder_icon(album_folder, image_filepath)
             album.metadata['~albumfoldercoverhash'] = image_hash
         except (subprocess.CalledProcessError) as err:
