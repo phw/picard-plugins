@@ -28,10 +28,10 @@ PLUGIN_LICENSE_URL = "https://www.gnu.org/licenses/gpl-2.0.html"
 
 from collections import defaultdict
 import os
+import os.path
 import shutil
 import subprocess
 import tempfile
-from functools import partial
 
 from picard import (
     config,
@@ -42,10 +42,7 @@ from picard.const.sys import (
     IS_MACOS,
 )
 from picard.file import register_file_post_save_processor
-from picard.util import (
-    decode_filename,
-    encode_filename,
-)
+from picard.util import decode_filename
 
 if IS_MACOS:
     ICON_SIZES = [
@@ -159,7 +156,8 @@ elif IS_LINUX:
     def set_folder_icon(folder_path, image_filepath):
         log.debug('albumfoldercover: Setting cover for %r to %r',
             folder_path, image_filepath)
-        image_filepath = 'file://' + image_filepath
+        # image_filepath = 'file://' + image_filepath
+        image_filepath = os.path.relpath(image_filepath, folder_path)
         subprocess.check_call([gio, 'set', folder_path, 'metadata::custom-icon', image_filepath])
 
     def on_file_save_processor(file):
