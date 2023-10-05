@@ -189,9 +189,10 @@ class AutoTagLookup(BaseLookupAction):
         self.request_batch(files, index + self.MAPPING_BATCH_SIZE, mapped, unidentified)
 
     def after_mapping(self, mapped, unidentified):
-        self.clear_pending(unidentified)
+        if unidentified:
+            self.clear_pending(unidentified)
         if not mapped:
-            log.warn('AutoTagLookup: could not map any files')
+            log.warning('AutoTagLookup: could not map any files')
             return
         log.info(f'AutoTagLookup: mapped {len(mapped)}, unidentified {len(unidentified)}')
         self.load_releases(mapped, 0, releases={})
