@@ -34,10 +34,7 @@ PLUGIN_API_VERSIONS = ['2.0', '2.1', '2.2', '2.3', '2.4', '2.6', '2.7', '2.8', '
 PLUGIN_LICENSE = 'GPL-2.0-or-later'
 PLUGIN_LICENSE_URL = 'https://www.gnu.org/licenses/gpl-2.0.html'
 
-from collections import (
-  defaultdict,
-  namedtuple,
-)
+from collections import defaultdict
 from functools import partial
 import json
 
@@ -124,7 +121,7 @@ register_file_action(listenbrainz_lookup)
 
 
 class ReleaseDetails:
-    def __init__(self, mbid, tracks, similarity=0) -> None:
+    def __init__(self, mbid, tracks) -> None:
         self.mbid = mbid
         self.tracks = tracks
 
@@ -198,12 +195,6 @@ class TrackDetails:
         sim /= len(self.files)
         return sim
 
-# ReleaseDetails = namedtuple('ReleaseDetails', 'mbid tracks similarity file_count')
-# TrackDetails = namedtupTrackDetails', 'mbid tiduration tracknumber discnumber files')
-
-
-AUTOTAG_SIMILARITY_THRESHOLD = 0.25
-
 
 class AutoTagLookup(BaseLookupAction):
     """
@@ -221,6 +212,7 @@ class AutoTagLookup(BaseLookupAction):
 
     MAPPING_BATCH_SIZE = 50
     RELEASES_BATCH_SIZE = 20
+    AUTOTAG_SIMILARITY_THRESHOLD = 0.25
 
     def __init__(self):
         super().__init__()
@@ -377,7 +369,7 @@ class AutoTagLookup(BaseLookupAction):
         if not matches:
             return matches
         return sorted(
-            (m for m in matches if m.similarity >= AUTOTAG_SIMILARITY_THRESHOLD),
+            (m for m in matches if m.similarity >= self.AUTOTAG_SIMILARITY_THRESHOLD),
             key=lambda r: r.similarity,
             reverse=True)
 
