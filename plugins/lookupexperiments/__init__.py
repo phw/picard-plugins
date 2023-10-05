@@ -244,8 +244,7 @@ class AutoTagLookup(BaseLookupAction):
 
     def load_recordings_into_releases(self, mapped, releases):
         release_index = defaultdict(list)
-        for release_mbid in releases:
-            release = releases[release_mbid]
+        for release in releases.values():
             for tnum, recording in enumerate(release["release"]):
                 release_index[recording["recording_mbid"]].append((release, tnum))
 
@@ -312,8 +311,8 @@ class AutoTagLookup(BaseLookupAction):
     def load_match(self, release_candidate):
         release_mbid = release_candidate["release"]["release_mbid"]
         for track in release_candidate["release"]["release"]:
-            for file in track["files"]:
-                self.tagger.move_file_to_track(file,release_mbid, track["recording_mbid"])
+            for file in track.get("files", []):
+                self.tagger.move_file_to_track(file, release_mbid, track["recording_mbid"])
 
 
 autotag_lookup = AutoTagLookup()
