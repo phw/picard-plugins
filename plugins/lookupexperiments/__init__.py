@@ -139,8 +139,15 @@ class AutoTagLookup(BaseLookupAction):
         super().__init__()
         self.releases = {}
 
+    @staticmethod
+    def filter_files(files):
+        for f in files:
+            m = f.metadata
+            if m['artist'] and m['title'] and m['album']:
+                yield f
+
     def callback(self, objs):
-        files = list(iter_files_from_objects(objs, save=True))
+        files = list(self.filter_files(iter_files_from_objects(objs, save=True)))
         for f in files:
             f.set_pending()
         self.request_batch(files, 0, mapped=[], unidentified=[])
@@ -156,12 +163,13 @@ class AutoTagLookup(BaseLookupAction):
             return
         post_data = [{
             "[artist_credit_name]": f.metadata["artist"],
-            "[recording_name]": f.metadata["title"]
+            "[recording_name]": f.metadata["title"],
+            "[release_name]": f.metadata["album"],
         } for f in batch]
         self.webservice.post(
             LISTENBRAINZ_LABS_HOST,
             LISTENBRAINZ_LABS_PORT,
-            '/mbid-mapping/json',
+            '/mbid-mapping-release/json',
             json.dumps(post_data),
             partial(self.request_batch_finished, files, index, batch, mapped, unidentified),
             priority=True,
