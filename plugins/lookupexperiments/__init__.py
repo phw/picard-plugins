@@ -34,7 +34,10 @@ PLUGIN_API_VERSIONS = ['2.0', '2.1', '2.2', '2.3', '2.4', '2.6', '2.7', '2.8', '
 PLUGIN_LICENSE = 'GPL-2.0-or-later'
 PLUGIN_LICENSE_URL = 'https://www.gnu.org/licenses/gpl-2.0.html'
 
-from collections import defaultdict
+from collections import (
+  defaultdict,
+  namedtuple,
+)
 from functools import partial
 import json
 
@@ -116,6 +119,27 @@ class ListenBrainzLookup(BaseLookupAction):
 listenbrainz_lookup = ListenBrainzLookup()
 register_cluster_action(listenbrainz_lookup)
 register_file_action(listenbrainz_lookup)
+
+
+
+class ReleaseDetails:
+    def __init__(self, mbid, tracks, similarity=0) -> None:
+        self.mbid = mbid
+        self.tracks = tracks
+        self.similarity = similarity
+        self.file_count = 0
+
+    @property
+    def track_count(self):
+        return len(self.tracks)
+
+    def __repr__(self) -> str:
+        return (f"<ReleaseDetails {self.mbid}, similarity={self.similarity}, "
+                f"track_count={self.track_count}, file_count={self.file_count}>")
+
+
+# ReleaseDetails = namedtuple('ReleaseDetails', 'mbid tracks similarity file_count')
+TrackDetails = namedtuple('TrackDetails', 'mbid title duration tracknumber discnumber files')
 
 
 class AutoTagLookup(BaseLookupAction):
@@ -223,14 +247,23 @@ class AutoTagLookup(BaseLookupAction):
             parse_response_type='json',
             request_mimetype="application/json")
 
+    def get_recording_details(self, recordings):
+        for recording in recordings:
+            yield TrackDetails(*recording, [])
+
+    def get_release_details(self, data):
+        for release_group in data:
+            for mbid, recordings in release_group['releases'].items():
+                yield ReleaseDetails(mbid, list(self.get_recording_details(recordings)))
+
     def load_releases_finished(self, mapped, index, releases, data, reply, error):
         if error:
             log.error("AutoTagLookup: could not load releases: %s", error)
             self.after_load_releases(mapped, None)
             return
-        for result in data:
-            if result["release_mbid"] not in releases:
-                releases[result["release_mbid"]] = result
+        for release in self.get_release_details(data):
+            if release.mbid not in releases:
+                releases[release.mbid] = release
         self.load_releases(mapped, index + self.RELEASES_BATCH_SIZE, releases)
 
     def after_load_releases(self, mapped, releases):
@@ -238,81 +271,53 @@ class AutoTagLookup(BaseLookupAction):
         # FIXME: Run clear pending once files have been processed (matched or not)
         self.clear_pending((f for f, m in mapped))
         if not releases:
-            log.warn('AutoTagLookup: could not load releases')
+            log.warning('AutoTagLookup: could not load releases')
             return
-        self.load_recordings_into_releases(mapped, releases)
+        self.load_recordings_into_releases(mapped, releases.values())
 
-    def load_recordings_into_releases(self, mapped, releases):
+    def load_recordings_into_releases(self, mapped, releases: list[ReleaseDetails]):
         release_index = defaultdict(list)
-        for release in releases.values():
-            for tnum, recording in enumerate(release["release"]):
-                release_index[recording["recording_mbid"]].append((release, tnum))
+        for release in releases:
+            for recording in release.tracks:
+                release_index[recording.mbid].append((release, recording.tracknumber))
 
         for (file, recording) in mapped:
             recording_mbid = recording["recording_mbid"]
             for release, tnum in release_index[recording_mbid]:
-                rel_recording = release["release"][tnum]
-                if "files" not in rel_recording:
-                    rel_recording["files"] = []
-                rel_recording["files"].append(file)
+                rel_recording = release.tracks[tnum - 1]
+                rel_recording.files.append(file)
+                release.file_count += 1
 
-        stats = []
-        for release_mbid in releases:
-            total = 0
-            file_count = 0
-            for recording in releases[release_mbid]["release"]:
-                if "files" in recording:
-                    file_count += 1
-                total += 1
+        for release in releases:
+            release.similarity = min(1.0, release.file_count / release.track_count)
 
-            if file_count == 1:
-                continue
+        matches = sorted(releases, key=lambda r: (r.similarity, r.track_count), reverse=True)
+        # for release in matches:
+        #     print(release)
+        self.evaluate_match(matches)
 
-            stats.append({
-                "release": releases[release_mbid],
-                "file_count": file_count,
-                "total": total,
-                "match": file_count / total,
-            })
-
-        last_rg = ""
-        group = []
-        for entry in sorted(stats, key=lambda i: (i["release"]["release_group_mbid"], i["release"]["release_mbid"], i["match"])):
-            if last_rg != entry["release"]["release_group_mbid"]:
-                self.evaluate_match(group)
-                group = []
-
-            group.append(entry)
-            last_rg = entry["release"]["release_group_mbid"]
-
-        if len(group) != 0:
-            self.evaluate_match(group)
-
-    def evaluate_match(self, release_candidates):
-        release_candidates.sort(key=lambda i: i["release"]["release_group_mbid"])
+    def evaluate_match(self, release_candidates: list[ReleaseDetails]):
         # Check for perfect matches
-        for i, c in enumerate(release_candidates):
-            if c["file_count"] == c["total"]:
-                log.debug("FULL MATCH! (release group %s '%s')" %
-                      (c["release"]["release_group_mbid"][:6], c["release"]["release_name"]))
-                self.print_match(c)
-                self.load_match(c)
-                release_candidates.pop(i)
+        for r in release_candidates:
+            if r.similarity == 1.0:
+                log.warning("FULL MATCH! %r" % r.mbid)
+                # self.print_match(c)
+                self.load_match(r)
+                # release_candidates.pop(i)
                 return
 
-    def print_match(self, release_candidate):
-        for r in release_candidate["release"]["release"]:
-            try:
-                files = ",".join([str(f) for f in r["files"]])
-            except KeyError:
-                files = ""
-            log.debug("%3d %3d %-40s %s" % (r["medium_position"], r["position"], r["recording_name"][:39], files))
+    # def print_match(self, release_candidate):
+    #     for r in release_candidate["release"]["release"]:
+    #         try:
+    #             files = ",".join([str(f) for f in r["files"]])
+    #         except KeyError:
+    #             files = ""
+    #         log.debug("%3d %3d %-40s %s" % (r["medium_position"], r["position"], r["recording_name"][:39], files))
 
-    def load_match(self, release_candidate):
-        release_mbid = release_candidate["release"]["release_mbid"]
-        for track in release_candidate["release"]["release"]:
-            for file in track.get("files", []):
-                self.tagger.move_file_to_track(file, release_mbid, track["recording_mbid"])
+    def load_match(self, release: ReleaseDetails):
+        for track in release.tracks:
+            for file in track.files:
+                self.tagger.move_file_to_track(file, release.mbid, track.mbid)
 
 
 autotag_lookup = AutoTagLookup()
