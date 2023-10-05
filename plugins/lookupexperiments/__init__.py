@@ -42,6 +42,7 @@ from functools import partial
 import json
 
 from picard import log
+from picard.file import File
 from picard.util import iter_files_from_objects
 from picard.webservice import ratecontrol
 
@@ -126,20 +127,82 @@ class ReleaseDetails:
     def __init__(self, mbid, tracks, similarity=0) -> None:
         self.mbid = mbid
         self.tracks = tracks
-        self.similarity = similarity
-        self.file_count = 0
+
+    @property
+    def similarity(self):
+        sim = min(1.0, self.matched_tracks_count / self.track_count)
+        for track in self.tracks:
+            sim *= track.similarity
+        return sim
 
     @property
     def track_count(self):
         return len(self.tracks)
+
+    @property
+    def matched_tracks_count(self):
+        count = 0
+        for track in self.tracks:
+            if track.files:
+                count += 1
+        return count
+
+    @property
+    def file_count(self):
+        count = 0
+        for track in self.tracks:
+            count += len(track.files)
+        return count
+
+    @property
+    def files(self):
+        for track in self.tracks:
+            yield from track.files
 
     def __repr__(self) -> str:
         return (f"<ReleaseDetails {self.mbid}, similarity={self.similarity}, "
                 f"track_count={self.track_count}, file_count={self.file_count}>")
 
 
+class TrackDetails:
+    def __init__(self, mbid, title, duration, tracknumber, discnumber):
+        self.mbid = mbid
+        self.title = title
+        self.duration = duration
+        self.tracknumber = tracknumber
+        self.discnumber = discnumber
+        self.files = []
+
+    @property
+    def data(self):
+        return {
+            'title': self.title,
+            # 'artist-credits': [{
+            #     'artist': ''
+            # }],
+            # 'releases': [{
+            #     'album': '',
+            #     'albumartist': ''
+            # }],
+            'length': self.duration,
+        }
+
+    @property
+    def similarity(self):
+        if not self.files:
+            return 0.0
+        sim = 1.0
+        data = self.data
+        for file in self.files:
+            sim *= file.metadata.compare_to_track(data, File.comparison_weights).similarity
+        sim /= len(self.files)
+        return sim
+
 # ReleaseDetails = namedtuple('ReleaseDetails', 'mbid tracks similarity file_count')
-TrackDetails = namedtuple('TrackDetails', 'mbid title duration tracknumber discnumber files')
+# TrackDetails = namedtupTrackDetails', 'mbid tiduration tracknumber discnumber files')
+
+
+AUTOTAG_SIMILARITY_THRESHOLD = 0.25
 
 
 class AutoTagLookup(BaseLookupAction):
@@ -186,7 +249,7 @@ class AutoTagLookup(BaseLookupAction):
             self.after_mapping(mapped, unidentified)
             return
         post_data = [{
-            "[artist_credit_name]": f.metadata["artist"],
+            "[artist_credit_name]": f.metadata["artist"] or f.metadata["albumartist"],
             "[recording_name]": f.metadata["title"],
             "[release_name]": f.metadata["album"],
         } for f in batch]
@@ -249,7 +312,7 @@ class AutoTagLookup(BaseLookupAction):
 
     def get_recording_details(self, recordings):
         for recording in recordings:
-            yield TrackDetails(*recording, [])
+            yield TrackDetails(*recording)
 
     def get_release_details(self, data):
         for release_group in data:
@@ -286,38 +349,52 @@ class AutoTagLookup(BaseLookupAction):
             for release, tnum in release_index[recording_mbid]:
                 rel_recording = release.tracks[tnum - 1]
                 rel_recording.files.append(file)
-                release.file_count += 1
 
-        for release in releases:
-            release.similarity = min(1.0, release.file_count / release.track_count)
+        matches = self.clean_matches(releases)
+        self.print_matches(matches)
+        while match := self.evaluate_match(matches):
+            matches = self.clean_matches(matches, match)
+            self.print_matches(matches)
+            self.load_match(match)
 
-        matches = sorted(releases, key=lambda r: (r.similarity, r.track_count), reverse=True)
-        # for release in matches:
-        #     print(release)
-        self.evaluate_match(matches)
+    def print_matches(self, matches: list[ReleaseDetails]):
+        print("===")
+        print(f"MATCHES {len(matches)}:")
+        for release in matches:
+            print(release)
+        print("===")
 
-    def evaluate_match(self, release_candidates: list[ReleaseDetails]):
-        # Check for perfect matches
-        for r in release_candidates:
-            if r.similarity == 1.0:
-                log.warning("FULL MATCH! %r" % r.mbid)
-                # self.print_match(c)
-                self.load_match(r)
-                # release_candidates.pop(i)
-                return
+    def clean_matches(self, matches: list[ReleaseDetails], processed_match: ReleaseDetails=None):
+        if processed_match:
+            matches.remove(processed_match)
+            self.clear_pending(processed_match.files)
+            for f in processed_match.files:
+                for m in matches:
+                    for t in m.tracks:
+                        if f in t.files:
+                            t.files.remove(f)
+        if not matches:
+            return matches
+        return sorted(
+            (m for m in matches if m.similarity >= AUTOTAG_SIMILARITY_THRESHOLD),
+            key=lambda r: r.similarity,
+            reverse=True)
 
-    # def print_match(self, release_candidate):
-    #     for r in release_candidate["release"]["release"]:
-    #         try:
-    #             files = ",".join([str(f) for f in r["files"]])
-    #         except KeyError:
-    #             files = ""
-    #         log.debug("%3d %3d %-40s %s" % (r["medium_position"], r["position"], r["recording_name"][:39], files))
+    def evaluate_match(self, matches: list[ReleaseDetails]):
+        # for r in matches:
+        #     if r.similarity == 1.0 and r.file_count > 0:
+        #         log.warning("FULL MATCH! %r" % r.mbid)
+        #         # self.print_match(c)
+        #         # release_candidates.pop(i)
+        #         return r
+
+        if matches:
+            return matches[0]
+
+        return None
 
     def load_match(self, release: ReleaseDetails):
-        for track in release.tracks:
-            for file in track.files:
-                self.tagger.move_file_to_track(file, release.mbid, track.mbid)
+        self.tagger.move_files_to_album(release.files, release.mbid)
 
 
 autotag_lookup = AutoTagLookup()
