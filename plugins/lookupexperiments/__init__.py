@@ -323,6 +323,7 @@ class AutoTagLookup(BaseLookupAction):
         if error:
             log.error("AutoTagLookup: could not load releases: %s", error)
             self.after_load_releases(mapped, None)
+            self.clear_pending((f for f, m in mapped))
             return
         for release in self.get_release_details(data):
             if release.mbid not in releases:
@@ -330,9 +331,6 @@ class AutoTagLookup(BaseLookupAction):
         self.load_releases(mapped, index + self.RELEASES_BATCH_SIZE, releases)
 
     def after_load_releases(self, mapped, releases):
-        # We clear the pending here for all files to simplify the process
-        # FIXME: Run clear pending once files have been processed (matched or not)
-        self.clear_pending((f for f, m in mapped))
         if not releases:
             log.warning('AutoTagLookup: could not load releases')
             return
@@ -356,6 +354,9 @@ class AutoTagLookup(BaseLookupAction):
             matches = self.clean_matches(matches, match)
             self.print_matches(matches)
             self.load_match(match)
+
+        # Clear the pending here for all files
+        self.clear_pending((f for f, m in mapped))
 
     def print_matches(self, matches: list[ReleaseDetails]):
         print("===")
