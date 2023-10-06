@@ -39,6 +39,7 @@ from functools import partial
 import json
 
 from picard import log
+from picard.config import get_config
 from picard.file import File
 from picard.util import iter_files_from_objects
 from picard.webservice import ratecontrol
@@ -212,7 +213,7 @@ class TrackDetails:
                 'artist': self.artist
             }],
             'releases': [self.release_data],
-            'length': self.duration,
+            'length': self.duration or 0,
         }
 
     @property
@@ -226,10 +227,18 @@ class TrackDetails:
     def get_file_similarities(self):
         data = self.data
         return (
-            (file.metadata.compare_to_track(data, File.comparison_weights).similarity, file)
+            (self.file_similarity(file, data), file)
             for file in self.files
         )
 
+    def file_similarity(self, file, data=None):
+        if not data:
+            data = self.data
+        return file.metadata.compare_to_track(data, File.comparison_weights).similarity
+
+    def __repr__(self) -> str:
+        return (f"<TrackDetails {self.mbid}, similarity={self.similarity}, "
+                f"file_count={len(self.files)}>")
 
 class AutoTagLookup(BaseLookupAction):
     """
@@ -311,18 +320,16 @@ class AutoTagLookup(BaseLookupAction):
         self.request_batch(files, index + self.MAPPING_BATCH_SIZE, mapped, unidentified)
 
     def after_mapping(self, mapped, unidentified):
-        if unidentified:
-            self.clear_pending(unidentified)
         if not mapped:
             log.warning('AutoTagLookup: could not map any files')
             return
         log.info(f'AutoTagLookup: mapped {len(mapped)}, unidentified {len(unidentified)}')
-        self.load_releases(mapped, 0, releases={})
+        self.load_releases(mapped, 0, unidentified, releases={})
 
-    def load_releases(self, mapped, index, releases):
+    def load_releases(self, mapped, index, unidentified, releases):
         batch = mapped[index:index + self.RELEASES_BATCH_SIZE]
         if not batch:
-            self.after_load_releases(mapped, releases)
+            self.after_load_releases(mapped, unidentified, releases)
             return
 
         post_data = [{"[recording_mbid]": m['recording_mbid']} for f, m in batch]
@@ -331,7 +338,7 @@ class AutoTagLookup(BaseLookupAction):
             LISTENBRAINZ_DATASETS_PORT,
             '/releases-from-recordings/json',
             json.dumps(post_data),
-            partial(self.load_releases_finished, mapped, index, releases),
+            partial(self.load_releases_finished, mapped, index, unidentified, releases),
             priority=True,
             important=False,
             parse_response_type='json',
@@ -352,24 +359,24 @@ class AutoTagLookup(BaseLookupAction):
                 )
                 yield release_details
 
-    def load_releases_finished(self, mapped, index, releases, data, reply, error):
+    def load_releases_finished(self, mapped, index, unidentified, releases, data, reply, error):
         if error:
             log.error("AutoTagLookup: could not load releases: %s", error)
-            self.after_load_releases(mapped, None)
+            self.after_load_releases(mapped, unidentified, None)
             self.clear_pending((f for f, m in mapped))
             return
         for release in self.get_release_details(data):
             if release.mbid not in releases:
                 releases[release.mbid] = release
-        self.load_releases(mapped, index + self.RELEASES_BATCH_SIZE, releases)
+        self.load_releases(mapped, index + self.RELEASES_BATCH_SIZE, unidentified, releases)
 
-    def after_load_releases(self, mapped, releases):
+    def after_load_releases(self, mapped, unidentified, releases):
         if not releases:
             log.warning('AutoTagLookup: could not load releases')
             return
-        self.load_recordings_into_releases(mapped, releases.values())
+        self.load_recordings_into_releases(mapped, unidentified, releases.values())
 
-    def load_recordings_into_releases(self, mapped, releases: list[ReleaseDetails]):
+    def load_recordings_into_releases(self, mapped, unidentified, releases: list[ReleaseDetails]):
         release_index = defaultdict(list)
         for release in releases:
             for recording in release.tracks:
@@ -382,6 +389,10 @@ class AutoTagLookup(BaseLookupAction):
                 if file not in rel_recording.files:
                     rel_recording.files.append(file)
 
+        mapped_files = list(f for f, t in mapped)
+        self.fill_holes(unidentified, releases, mapped_files)
+
+        # self.print_matches(releases)
         matches = self.clean_matches(releases)
         self.print_matches(matches)
         while match := self.evaluate_match(matches):
@@ -390,7 +401,25 @@ class AutoTagLookup(BaseLookupAction):
             self.print_matches(matches)
 
         # Clear the pending here for all files
-        self.clear_pending((f for f, m in mapped))
+        self.clear_pending(mapped_files)
+
+    def fill_holes(self, unidentified, releases, mapped_files):
+        """Try to match unidentified files to tracks without matched files"""
+        config = get_config()
+        threshold = config.setting['track_matching_threshold']
+        for file in list(unidentified):
+            for release in releases:
+                for track in release.tracks:
+                    if track.file_similarity(file) > threshold:
+                        log.info("AutoTagLookup: match previously unidentified file %r -> %r" % (file, track))
+                        track.files.append(file)
+                        mapped_files.append(file)
+                        if file in unidentified:
+                            unidentified.remove(file)
+
+        # Still some left? Ignore
+        if unidentified:
+            self.clear_pending(unidentified)
 
     def print_matches(self, matches: list[ReleaseDetails]):
         print("===")
