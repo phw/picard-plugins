@@ -129,8 +129,8 @@ class ReleaseDetails:
     @property
     def similarity(self):
         sim = min(1.0, self.matched_tracks_count / self.track_count)
-        for track in self.tracks:
-            sim *= track.similarity
+        if self.tracks:
+            sim *= sum(t.similarity for t in self.tracks) / len(self.tracks)
         return sim
 
     @property
@@ -193,11 +193,15 @@ class TrackDetails:
         if not self.files:
             return 0.9  # Give it a small penalty for missing file
         sim = 1.0
-        data = self.data
-        for file in self.files:
-            sim *= file.metadata.compare_to_track(data, File.comparison_weights).similarity
-        sim /= len(self.files)
+        sim *= sorted(self.get_file_similarities(), key=lambda s: s[0])[0][0]
         return sim
+
+    def get_file_similarities(self):
+        data = self.data
+        return (
+            (file.metadata.compare_to_track(data, File.comparison_weights).similarity, file)
+            for file in self.files
+        )
 
 
 class AutoTagLookup(BaseLookupAction):
@@ -393,6 +397,14 @@ class AutoTagLookup(BaseLookupAction):
         return None
 
     def load_match(self, release: ReleaseDetails):
+        # Only use the best matching files
+        for track in release.tracks:
+            if track.files:
+                sims = list(track.get_file_similarities())
+                max_sim = max(sim[0] for sim in sims)
+                for sim, file in sims:
+                    if sim < max_sim:
+                        track.files.remove(file)
         self.tagger.move_files_to_album(release.files, release.mbid)
 
 
