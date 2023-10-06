@@ -121,10 +121,11 @@ register_file_action(listenbrainz_lookup)
 
 
 class ReleaseDetails:
-    def __init__(self, mbid, title, tracks) -> None:
+    def __init__(self, mbid, title, rgid, tracks=None) -> None:
         self.mbid = mbid
         self.title = title
-        self.tracks = tracks
+        self.rgid = rgid
+        self.tracks = tracks or []
 
     @property
     def similarity(self):
@@ -157,20 +158,33 @@ class ReleaseDetails:
         for track in self.tracks:
             yield from track.files
 
+    @property
+    def data(self):
+        return {
+            'id': self.mbid,
+            'title': self.title,
+            'release-group': {
+                'id': self.rgid
+            },
+            'artist-credits': [{
+                # 'artist': self.artist
+            }],
+        }
+
     def __repr__(self) -> str:
         return (f"<ReleaseDetails {self.mbid}, similarity={self.similarity}, "
                 f"track_count={self.track_count}, file_count={self.file_count}>")
 
 
 class TrackDetails:
-    def __init__(self, mbid, title, artist, duration, tracknumber, discnumber, release_title):
+    def __init__(self, mbid, title, artist, duration, tracknumber, discnumber, release_data):
         self.mbid = mbid
         self.title = title
         self.artist = artist
         self.duration = duration
         self.tracknumber = tracknumber
         self.discnumber = discnumber
-        self.release_title = release_title
+        self.release_data = release_data
         self.files = []
 
     @property
@@ -180,11 +194,7 @@ class TrackDetails:
             'artist-credits': [{
                 'artist': self.artist
             }],
-            # 'releases': [{
-            #     'title': self.release_title,
-            #     'release-group': None,
-            #     # 'albumartist': ''
-            # }],
+            'releases': [self.release_data],
             'length': self.duration,
         }
 
@@ -310,16 +320,20 @@ class AutoTagLookup(BaseLookupAction):
             parse_response_type='json',
             request_mimetype="application/json")
 
-    def get_recording_details(self, release_name, recordings):
+    def get_recording_details(self, recordings, release_data):
         for recording in recordings:
-            yield TrackDetails(*recording, release_name)
+            yield TrackDetails(*recording, release_data)
 
     def get_release_details(self, data):
         for release_group in data:
+            rgid = release_group.get('release_group_mbid')
             for mbid, release in release_group.get('releases', {}).items():
                 title = release.get('release_name', '')
-                recordings = list(self.get_recording_details(title, release.get('recordings', [])))
-                yield ReleaseDetails(mbid, title, recordings)
+                release_details = ReleaseDetails(mbid, title, rgid)
+                release_details.tracks = list(
+                    self.get_recording_details(release.get('recordings', []), release_details.data)
+                )
+                yield release_details
 
     def load_releases_finished(self, mapped, index, releases, data, reply, error):
         if error:
