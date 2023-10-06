@@ -201,7 +201,7 @@ class TrackDetails:
     @property
     def similarity(self):
         if not self.files:
-            return 0.9  # Give it a small penalty for missing file
+            return 0.5  # Give it a penalty for missing file
         sim = 1.0
         sim *= sorted(self.get_file_similarities(), key=lambda s: s[0])[0][0]
         return sim
@@ -228,8 +228,8 @@ class AutoTagLookup(BaseLookupAction):
     """
     NAME = 'AutoTag Lookup...'
 
-    MAPPING_BATCH_SIZE = 50
-    RELEASES_BATCH_SIZE = 20
+    MAPPING_BATCH_SIZE = 1000
+    RELEASES_BATCH_SIZE = 1000
     AUTOTAG_SIMILARITY_THRESHOLD = 0.25
 
     def __init__(self):
@@ -362,14 +362,15 @@ class AutoTagLookup(BaseLookupAction):
             recording_mbid = recording["recording_mbid"]
             for release, tnum in release_index[recording_mbid]:
                 rel_recording = release.tracks[tnum - 1]
-                rel_recording.files.append(file)
+                if file not in rel_recording.files:
+                    rel_recording.files.append(file)
 
         matches = self.clean_matches(releases)
         self.print_matches(matches)
         while match := self.evaluate_match(matches):
+            self.load_match(match)
             matches = self.clean_matches(matches, match)
             self.print_matches(matches)
-            self.load_match(match)
 
         # Clear the pending here for all files
         self.clear_pending((f for f, m in mapped))
@@ -398,16 +399,8 @@ class AutoTagLookup(BaseLookupAction):
             reverse=True)
 
     def evaluate_match(self, matches: list[ReleaseDetails]):
-        # for r in matches:
-        #     if r.similarity == 1.0 and r.file_count > 0:
-        #         log.warning("FULL MATCH! %r" % r.mbid)
-        #         # self.print_match(c)
-        #         # release_candidates.pop(i)
-        #         return r
-
         if matches:
             return matches[0]
-
         return None
 
     def load_match(self, release: ReleaseDetails):
