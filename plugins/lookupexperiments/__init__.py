@@ -169,7 +169,24 @@ class ReleaseDetails:
             'artist-credits': [{
                 # 'artist': self.artist
             }],
+            'track-count': self.track_count,
+            'media': list(self._medium_data())
         }
+
+    def _medium_data(self):
+        track_count = 0
+        current_discnumber = 1
+        for track in self.tracks:
+            if track.discnumber != current_discnumber:
+                yield {
+                    'track-count': track_count
+                }
+                track_count = 0
+            track_count += 1
+        yield {
+            'track-count': track_count
+        }
+
 
     def __repr__(self) -> str:
         return (f"<ReleaseDetails {self.mbid}, similarity={self.similarity}, "
