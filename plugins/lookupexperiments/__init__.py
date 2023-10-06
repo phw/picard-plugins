@@ -191,7 +191,7 @@ class TrackDetails:
     @property
     def similarity(self):
         if not self.files:
-            return 0.0
+            return 0.9  # Give it a small penalty for missing file
         sim = 1.0
         data = self.data
         for file in self.files:
