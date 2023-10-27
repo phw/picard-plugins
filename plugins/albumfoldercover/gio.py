@@ -62,11 +62,8 @@ class GioAlbumFolderProcessor(AbstractAlbumFolderProcessor):
             filename, folder_path, metadata, win_compat, win_shorten_path))
         image_filepath += image.extension
         if not os.path.exists(image_filepath) or not config.setting["save_images_to_files"]:
-            counters = defaultdict(lambda: 0)
-            image.save(folder_path, metadata, counters)
-            saved_filepath = image_filepath
             image_filepath = os.path.join(folder_path, '.cover' + image.extension)
-            shutil.move(saved_filepath, image_filepath)
+            shutil.copyfile(image.tempfile_filename, image_filepath)
         return image_filepath
 
     def _set_folder_icon(self, folder_path: str, image_filepath: str):
