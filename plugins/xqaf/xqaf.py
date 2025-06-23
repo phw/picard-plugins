@@ -18,6 +18,10 @@
 # 02110-1301, USA.
 
 import struct
+try:
+    import zstandard as zstd
+except ImportError:
+    zstd = None
 
 from mutagen import FileType, MutagenError, StreamInfo
 from mutagen._vorbis import VCommentDict
@@ -102,7 +106,7 @@ class XQAFVCommentDict(VCommentDict):
     def load(self, fileobj, errors='replace', framing=True, compression=False):
         super().load(fileobj, errors=errors, framing=framing)
 
-    def save(self, filething, framing=True):
+    def save(self, filething, framing=True, compression=False):
         """Save the Vorbis comment to a file-like object."""
         f = filething.fileobj
         info = XQAFInfo(f)
@@ -117,11 +121,24 @@ class XQAFVCommentDict(VCommentDict):
         data_offset = info._data_offset
         tag_offset = info._tag_offset
 
+        # If compression is enabled, compress the tag data
+        if compression:
+            if not zstd:
+                raise XQAFError("Compression of XQAF tags requires zstd")
+            compressor = zstd.ZstdCompressor()
+            tag_data = compressor.compress(tag_data)
+            new_size = len(tag_data)
+
+            if not info._flags.is_compressed:
+                flags = info._flags | XQAFFlags._COMPRESSED_TAGS
+                f.seek(6)
+                f.write(struct.pack(">I", flags))
+
         if tag_offset > 0 and info._tag_length > 0:
             # Resize existing tags to new size
             resize_bytes(f, info._tag_length, new_size, info._tag_offset)
             if tag_offset < data_offset:
-                # If the tag block is before the data block, we need to adjust the data offset
+                # If the tag block comes before the data block, we need to adjust the data offset
                 data_offset += new_size - info._tag_length
         else:
             # Add a new tag block just before the data block
@@ -170,14 +187,23 @@ class XQAF(FileType):
             tag_data = self._read_tag_data(filething)
             if tag_data:
                 if self.info._flags.is_compressed:
-                    # FIXME: Implement decompression of XQAF tags
-                    raise XQAFError("Decompression of XQAF tags is not implemented")
+                    if not zstd:
+                        raise XQAFError("Decompression of XQAF tags not available")
+                    decompressor = zstd.ZstdDecompressor()
+                    # FIXME: Decompression fails for compressed tags written
+                    # by xqaf tool. But xqaf tool can read the comressed tags
+                    # written by this code.SS
+                    tag_data = decompressor.decompress(tag_data)
 
                 # FIXME: According to the spec framing is required, but the
                 # official xqaf tool does not write it.
                 self.tags = XQAFVCommentDict(tag_data, framing=False)
         except IOError as e:
             raise XQAFError(e)
+
+    @loadfile(writable=True)
+    def save(self, filething=None, compression=False):
+        super().save(filething, compression=compression)
 
     def add_tags(self):
         """Add empty tags to the file."""
