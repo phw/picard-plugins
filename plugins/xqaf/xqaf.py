@@ -111,8 +111,8 @@ class XQAFVCommentDict(VCommentDict):
         f = filething.fileobj
         info = XQAFInfo(f)
 
-        # FIXME: Implement compression of XQAF tags
-        if info._flags.is_compressed:
+        compression = (compression and bool(zstd)) or info._flags.is_compressed
+        if info._flags.is_compressed and not zstd:
             # Fail instead of silently overwriting compressed tags
             raise XQAFError("Compression of XQAF tags is not implemented")
 
@@ -125,8 +125,7 @@ class XQAFVCommentDict(VCommentDict):
         if compression:
             if not zstd:
                 raise XQAFError("Compression of XQAF tags requires zstd")
-            compressor = zstd.ZstdCompressor()
-            tag_data = compressor.compress(tag_data)
+            tag_data = zstd.compress(tag_data)
             new_size = len(tag_data)
 
             if not info._flags.is_compressed:
@@ -186,15 +185,6 @@ class XQAF(FileType):
             self.info = XQAFInfo(filething.fileobj)
             tag_data = self._read_tag_data(filething)
             if tag_data:
-                if self.info._flags.is_compressed:
-                    if not zstd:
-                        raise XQAFError("Decompression of XQAF tags not available")
-                    decompressor = zstd.ZstdDecompressor()
-                    # FIXME: Decompression fails for compressed tags written
-                    # by xqaf tool. But xqaf tool can read the comressed tags
-                    # written by this code.SS
-                    tag_data = decompressor.decompress(tag_data)
-
                 # FIXME: According to the spec framing is required, but the
                 # official xqaf tool does not write it.
                 self.tags = XQAFVCommentDict(tag_data, framing=False)
@@ -221,9 +211,15 @@ class XQAF(FileType):
     def _read_tag_data(self, filething):
         if self.info._tag_offset > 0 and self.info._tag_length > 0:
             filething.fileobj.seek(self.info._tag_offset)
-            tag_data = filething.fileobj.read(self.info._tag_length + 1)
+            tag_data = filething.fileobj.read(self.info._tag_length)
             if tag_data:
-                # If the tags are compressed, decompress them here
-                # (not implemented in this example)
+                if self.info._flags.is_compressed:
+                    if not zstd:
+                        raise XQAFError("Decompression of XQAF tags not available")
+                    # Tags compressed by xqatool do not specify a content size.
+                    # Hence we need to specify max_output_size to successfully
+                    # decompress the data.
+                    tag_data = zstd.decompress(tag_data, max_output_size=3*len(tag_data))
+
                 return tag_data
         return None
