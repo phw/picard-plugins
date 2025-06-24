@@ -17,7 +17,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 # 02110-1301, USA.
 
-from enum import Enum
+from enum import Enum, IntFlag
 import struct
 try:
     import zstandard as zstd
@@ -46,27 +46,27 @@ class XQAFCompressionMode(Enum):
     KEEP = 2
 
 
-class XQAFFlags(int):
+class XQAFFlags(IntFlag):
     """Flags for XQAF files.
 
     These flags are used in the XQAF header to indicate various properties
     of the audio file, such as compression and 64-bit fields.
     """
-    _GAPLESS = 1 << 0
-    _COMPRESSED_TAGS = 1 << 1
-    _IS_64BIT = 1 << 31
+    GAPLESS = 1 << 0
+    COMPRESSED_TAGS = 1 << 1
+    IS_64BIT = 1 << 31
 
     @property
     def is_gapless(self):
-        return (self & XQAFFlags._GAPLESS) != 0
+        return XQAFFlags.GAPLESS in self
 
     @property
     def is_compressed(self):
-        return (self & XQAFFlags._COMPRESSED_TAGS) != 0
+        return XQAFFlags.COMPRESSED_TAGS in self
 
     @property
     def is_64bit(self):
-        return (self & XQAFFlags._IS_64BIT) != 0
+        return XQAFFlags.IS_64BIT in self
 
 
 class XQAFInfo(StreamInfo):
@@ -143,11 +143,11 @@ class XQAFVCommentDict(VCommentDict):
             tag_data = zstd.compress(tag_data)
             new_size = len(tag_data)
             if not info._flags.is_compressed:
-                flags = info._flags | XQAFFlags._COMPRESSED_TAGS
+                flags = info._flags | XQAFFlags.COMPRESSED_TAGS
                 self._update_flags(f, flags)
         elif info._flags.is_compressed:
             # Disable the compression bit if we are not compressing
-            flags = info._flags & ~XQAFFlags._COMPRESSED_TAGS
+            flags = info._flags & ~XQAFFlags.COMPRESSED_TAGS
             self._update_flags(f, flags)
 
         if tag_offset > 0 and info._tag_length > 0:
