@@ -122,15 +122,15 @@ class XQAFInfo(StreamInfo):
 
 class XQAFVCommentDict(VCommentDict):
 
-    def load(self, fileobj, errors='replace', framing=True, compression=False):
-        super().load(fileobj, errors=errors, framing=framing)
+    def load(self, fileobj, errors='replace'):
+        super().load(fileobj, errors=errors, framing=False)
 
-    def save(self, filething, framing=True, compression=XQAFCompressionMode.KEEP):
+    def save(self, filething, compression=XQAFCompressionMode.KEEP):
         """Save the Vorbis comment to a file-like object."""
         f = filething.fileobj
         info = XQAFInfo(f)
 
-        tag_data = self.write(framing=framing)
+        tag_data = self.write(framing=False)
         new_size = len(tag_data)
         data_offset = info._data_offset
         tag_offset = info._tag_offset
@@ -208,9 +208,7 @@ class XQAF(FileType):
             self.info = XQAFInfo(filething.fileobj)
             tag_data = self._read_tag_data(filething)
             if tag_data:
-                # FIXME: According to the spec framing is required, but the
-                # official xqaf tool does not write it.
-                self.tags = XQAFVCommentDict(tag_data, framing=False)
+                self.tags = XQAFVCommentDict(tag_data)
         except IOError as e:
             raise XQAFError(e)
 
