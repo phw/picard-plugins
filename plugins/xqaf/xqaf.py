@@ -17,6 +17,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 # 02110-1301, USA.
 
+from enum import Enum
 import struct
 try:
     import zstandard as zstd
@@ -30,6 +31,19 @@ from mutagen._util import loadfile, insert_bytes, resize_bytes
 
 class XQAFError(MutagenError):
     pass
+
+
+class XQAFCompressionMode(Enum):
+    """XQAF tag compression modes.
+
+    NONE: Do not compress the tags.
+    COMPRESS: Compress the tags using zstandard.
+    KEEP: Compress the tags if the existing tags in the file are compressed,
+          otherwise do not compress them.
+    """
+    NONE = 0
+    COMPRESS = 1
+    KEEP = 2
 
 
 class XQAFFlags(int):
@@ -70,8 +84,7 @@ class XQAFInfo(StreamInfo):
         if not header.startswith(b"XQAF") or len(header) < 10:
             raise XQAFError("Invalid XQAF header")
 
-
-        major, minor, flags = struct.unpack(">ccI", header[4:])
+        _major, _minor, flags = struct.unpack(">ccI", header[4:])
         self._flags = XQAFFlags(flags)
 
         header_length = 24
@@ -106,15 +119,10 @@ class XQAFVCommentDict(VCommentDict):
     def load(self, fileobj, errors='replace', framing=True, compression=False):
         super().load(fileobj, errors=errors, framing=framing)
 
-    def save(self, filething, framing=True, compression=False):
+    def save(self, filething, framing=True, compression=XQAFCompressionMode.KEEP):
         """Save the Vorbis comment to a file-like object."""
         f = filething.fileobj
         info = XQAFInfo(f)
-
-        compression = (compression and bool(zstd)) or info._flags.is_compressed
-        if info._flags.is_compressed and not zstd:
-            # Fail instead of silently overwriting compressed tags
-            raise XQAFError("Compression of XQAF tags is not implemented")
 
         tag_data = self.write(framing=framing)
         new_size = len(tag_data)
@@ -122,16 +130,19 @@ class XQAFVCommentDict(VCommentDict):
         tag_offset = info._tag_offset
 
         # If compression is enabled, compress the tag data
-        if compression:
+        if compression == XQAFCompressionMode.COMPRESS or (
+            compression == XQAFCompressionMode.KEEP and info._flags.is_compressed):
             if not zstd:
-                raise XQAFError("Compression of XQAF tags requires zstd")
+                raise XQAFError("Compression of XQAF tags unavailable (requires zstandard)")
             tag_data = zstd.compress(tag_data)
             new_size = len(tag_data)
-
             if not info._flags.is_compressed:
                 flags = info._flags | XQAFFlags._COMPRESSED_TAGS
-                f.seek(6)
-                f.write(struct.pack(">I", flags))
+                self._update_flags(f, flags)
+        elif info._flags.is_compressed:
+            # Disable the compression bit if we are not compressing
+            flags = info._flags & ~XQAFFlags._COMPRESSED_TAGS
+            self._update_flags(f, flags)
 
         if tag_offset > 0 and info._tag_length > 0:
             # Resize existing tags to new size
@@ -166,6 +177,12 @@ class XQAFVCommentDict(VCommentDict):
         f.seek(tag_offset)
         f.write(tag_data)
 
+    @staticmethod
+    def _update_flags(fileobj, flags):
+        """Update the flags in the XQAF header."""
+        fileobj.seek(6)
+        fileobj.write(struct.pack(">I", flags))
+
 
 class XQAF(FileType):
     """XQAF(filething)
@@ -192,7 +209,7 @@ class XQAF(FileType):
             raise XQAFError(e)
 
     @loadfile(writable=True)
-    def save(self, filething=None, compression=False):
+    def save(self, filething=None, compression=XQAFCompressionMode.KEEP):
         super().save(filething, compression=compression)
 
     def add_tags(self):
@@ -215,7 +232,7 @@ class XQAF(FileType):
             if tag_data:
                 if self.info._flags.is_compressed:
                     if not zstd:
-                        raise XQAFError("Decompression of XQAF tags not available")
+                        raise XQAFError("Decompression of XQAF tags unavailable (requires zstandard)")
                     # Tags compressed by xqatool do not specify a content size.
                     # Hence we need to specify max_output_size to successfully
                     # decompress the data.
