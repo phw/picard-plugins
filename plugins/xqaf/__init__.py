@@ -73,6 +73,18 @@ class XQAFFile(VCommentFile):
     NAME = "Extended QOA Format"
     _File = XQAF
 
+    def _save(self, filename, metadata):
+        # Do not store the gapless tag in the metadata.
+        # XQAF files do have this information in the header,
+        # and for now this tag is considered readonly.
+        del metadata["gapless"]
+        super()._save(filename, metadata)
+
+    def _info(self, metadata, file):
+        super()._info(metadata, file)
+        if file.info.gapless:
+            metadata.set("gapless", 1)
+
 
 register_format(QOAFile)
 register_format(XQAFFile)

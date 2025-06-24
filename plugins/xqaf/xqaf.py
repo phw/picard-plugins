@@ -57,6 +57,10 @@ class XQAFFlags(int):
     _IS_64BIT = 1 << 31
 
     @property
+    def is_gapless(self):
+        return (self & XQAFFlags._GAPLESS) != 0
+
+    @property
     def is_compressed(self):
         return (self & XQAFFlags._COMPRESSED_TAGS) != 0
 
@@ -72,6 +76,7 @@ class XQAFInfo(StreamInfo):
       channels (`int`): number of audio channels
       length (`float`): file length in seconds, as a float
       sample_rate (`int`): audio sampling rate in Hz
+      gapless (`bool`): indicates whether the audio is supposed to be played gaplessly
     """
 
     def __init__(self, fileobj):
@@ -103,6 +108,7 @@ class XQAFInfo(StreamInfo):
 
         self.sample_rate = int.from_bytes(sample_rate, 'big')
         self.channels = channels
+        self.gapless = self._flags.is_gapless
 
         if self.sample_rate > 0:
             self.length = number_of_samples / float(self.sample_rate)
