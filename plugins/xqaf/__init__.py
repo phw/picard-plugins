@@ -20,8 +20,12 @@
 PLUGIN_NAME = 'XQAF'
 PLUGIN_AUTHOR = 'Philipp Wolfer'
 PLUGIN_DESCRIPTION = (
-    'Support for loading, tagging and renaming the XQAF audio file format.\n\n'
-    'See [Introducing the Extended QOA Format for Audio](https://remilia.sdf.org/blog/2025-06-14-a.html).'
+    'Support for the XQAF and QOA audio file formats.\n\n'
+    'XQAF files support full tagging. QOA files do not store tags, but can '
+    'be loaded and renamed.\n\n'
+    'For more details about both formats see '
+    '[Introducing the Extended QOA Format for Audio](https://remilia.sdf.org/blog/2025-06-14-a.html) '
+    'and [The Quite OK Audio Format](https://qoaformat.org/).'
 
 )
 PLUGIN_VERSION = "0.1"
@@ -29,10 +33,37 @@ PLUGIN_API_VERSIONS = ["2.8"]
 PLUGIN_LICENSE = "GPL-2.0"
 PLUGIN_LICENSE_URL = "https://www.gnu.org/licenses/gpl-2.0.html"
 
-from picard.formats import register_format
-from picard.formats.vorbis import VCommentFile
 
+from picard.formats import register_format
+from picard.file import File
+from picard.formats.vorbis import VCommentFile
+from picard import log
+from picard.metadata import Metadata
+
+from .qoa import QOA
 from .xqaf import XQAF
+
+
+class QOAFile(File):
+
+    """Quite OK Audio file."""
+    EXTENSIONS = [".qoa"]
+    NAME = "Quite OK Audio"
+    _File = QOA
+
+    def _load(self, filename):
+        log.debug("Loading file %r", filename)
+        f = QOA(filename)
+        metadata = Metadata()
+        self._info(metadata, f)
+        return metadata
+
+    def _save(self, filename, metadata):
+        log.debug("Saving file %r", filename)
+
+    @classmethod
+    def supports_tag(cls, name):
+        return False
 
 
 class XQAFFile(VCommentFile):
@@ -43,4 +74,5 @@ class XQAFFile(VCommentFile):
     _File = XQAF
 
 
+register_format(QOAFile)
 register_format(XQAFFile)
