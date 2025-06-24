@@ -29,6 +29,12 @@ from mutagen._vorbis import VCommentDict
 from mutagen._util import loadfile, insert_bytes, resize_bytes
 
 
+_XQAF_BASE_HEADER_SIZE = 10
+_XQAF_EXTENDED_HEADER_SIZE_32 = 24
+_XQAF_EXTENDED_HEADER_SIZE_64 = 36
+_MAX_UINT32 = 0xFFFFFFFF
+
+
 class XQAFError(MutagenError):
     pass
 
@@ -85,19 +91,19 @@ class XQAFInfo(StreamInfo):
     def _parse_header(self, fileobj):
         """Parse the XQAF header to extract metadata."""
         # See spec at https://chiselapp.com/user/MistressRemilia/repository/cl-remiaudio/file?name=docs/extended-qoa-format.md&ci=tip
-        header = fileobj.read(10)
-        if not header.startswith(b"XQAF") or len(header) < 10:
+        header = fileobj.read(_XQAF_BASE_HEADER_SIZE)
+        if not header.startswith(b"XQAF") or len(header) < _XQAF_BASE_HEADER_SIZE:
             raise XQAFError("Invalid XQAF header")
 
         _major, _minor, flags = struct.unpack(">ccI", header[4:])
         self._flags = XQAFFlags(flags)
 
-        header_length = 24
+        header_length = _XQAF_EXTENDED_HEADER_SIZE_32
         header_format = ">3sIBIIII"
         if self._flags.is_64bit:
             # In 64 bit mode the data offsets and lengths are 64-bit,
             # with the exception of tag length which is always 32-bit.
-            header_length = 36
+            header_length = _XQAF_EXTENDED_HEADER_SIZE_64
             header_format = ">3sIBQQQI"
 
         extended_header = fileobj.read(header_length)
@@ -119,6 +125,11 @@ class XQAFInfo(StreamInfo):
         self._tag_offset = tag_offset
         self._tag_length = tag_length
 
+    @property
+    def _has_existing_tags(self) -> bool:
+        """Check if the XQAF file has tags."""
+        return self._tag_offset > 0 and self._tag_length > 0
+
 
 class XQAFVCommentDict(VCommentDict):
 
@@ -134,6 +145,7 @@ class XQAFVCommentDict(VCommentDict):
         new_size = len(tag_data)
         data_offset = info._data_offset
         tag_offset = info._tag_offset
+        new_flags = info._flags
 
         # If compression is enabled, compress the tag data
         if compression == XQAFCompressionMode.COMPRESS or (
@@ -143,14 +155,21 @@ class XQAFVCommentDict(VCommentDict):
             tag_data = zstd.compress(tag_data)
             new_size = len(tag_data)
             if not info._flags.is_compressed:
-                flags = info._flags | XQAFFlags.COMPRESSED_TAGS
-                self._update_flags(f, flags)
+                new_flags |= XQAFFlags.COMPRESSED_TAGS
         elif info._flags.is_compressed:
             # Disable the compression bit if we are not compressing
-            flags = info._flags & ~XQAFFlags.COMPRESSED_TAGS
-            self._update_flags(f, flags)
+            new_flags &= ~XQAFFlags.COMPRESSED_TAGS
 
-        if tag_offset > 0 and info._tag_length > 0:
+        # If the offsets exceed 32-bit, we need to upgrade to 64-bit mode
+        if not info._flags.is_64bit and (
+            data_offset + new_size > _MAX_UINT32 or tag_offset + new_size > _MAX_UINT32):
+            info = self._upgrade_to_64bit(f, info)
+            data_offset = info._data_offset
+            tag_offset = info._tag_offset
+            new_flags = info._flags
+
+        # Resize the file for the new tag size and adjust offsets accordingly
+        if info._has_existing_tags:
             # Resize existing tags to new size
             resize_bytes(f, info._tag_length, new_size, info._tag_offset)
             if tag_offset < data_offset:
@@ -173,6 +192,7 @@ class XQAFVCommentDict(VCommentDict):
             format = ">I"
 
         # Update the data offsets and length in the file header
+        self._update_flags(f, new_flags)
         f.seek(18)
         f.write(struct.pack(format, data_offset))
         f.seek(tag_offset_position)  # Skip the data length, it hasn't changed
@@ -184,10 +204,34 @@ class XQAFVCommentDict(VCommentDict):
         f.write(tag_data)
 
     @staticmethod
-    def _update_flags(fileobj, flags):
+    def _update_flags(fileobj, flags: XQAFFlags):
         """Update the flags in the XQAF header."""
         fileobj.seek(6)
         fileobj.write(struct.pack(">I", flags))
+
+    @classmethod
+    def _upgrade_to_64bit(cls, fileobj, info: XQAFInfo) -> XQAFInfo:
+        """Upgrade the XQAF file to 64-bit mode."""
+        if info._flags.is_64bit:
+            return info
+
+        # Resize the header to the larger size
+        resize_bytes(fileobj, _XQAF_EXTENDED_HEADER_SIZE_32, _XQAF_EXTENDED_HEADER_SIZE_64, _XQAF_BASE_HEADER_SIZE)
+        length_offset = _XQAF_EXTENDED_HEADER_SIZE_64 - _XQAF_EXTENDED_HEADER_SIZE_32
+
+        # Write the new tags for 64-bit mode
+        info._flags |= XQAFFlags.IS_64BIT
+        cls._update_flags(fileobj, info._flags)
+
+        # Update the data positions
+        info._data_offset = info._data_offset + length_offset
+        fileobj.seek(18)
+        fileobj.write(struct.pack(">QQ", info._data_offset, info._data_length))
+        if info._has_existing_tags:
+            info._tag_offset = info._tag_offset + length_offset
+        fileobj.write(struct.pack(">QI", info._tag_offset, info._tag_length))
+
+        return info
 
 
 class XQAF(FileType):
