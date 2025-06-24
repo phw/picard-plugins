@@ -26,7 +26,7 @@ except ImportError:
 
 from mutagen import FileType, MutagenError, StreamInfo
 from mutagen._vorbis import VCommentDict
-from mutagen._util import loadfile, insert_bytes, resize_bytes
+from mutagen._util import loadfile, insert_bytes, intround, resize_bytes
 
 
 _XQAF_BASE_HEADER_SIZE = 10
@@ -82,6 +82,7 @@ class XQAFInfo(StreamInfo):
       channels (`int`): number of audio channels
       length (`float`): file length in seconds, as a float
       sample_rate (`int`): audio sampling rate in Hz
+      bitrate (`int`): audio bitrate, in bits per second
       gapless (`bool`): indicates whether the audio is supposed to be played gaplessly
     """
 
@@ -118,6 +119,9 @@ class XQAFInfo(StreamInfo):
 
         if self.sample_rate > 0:
             self.length = number_of_samples / float(self.sample_rate)
+
+        if self.length > 0:
+            self.bitrate = intround(data_length * 8 / self.length)
 
         # Store data and tag offsets for internal use
         self._data_offset = data_offset
