@@ -175,8 +175,17 @@ class XQAFVCommentDict(VCommentDict):
         super().load(filething.fileobj, errors=errors, framing=False)
 
     @loadfile(writable=True)
-    def save(self, filething, compression=XQAFCompressionMode.KEEP):
-        """Save the Vorbis comment to a file-like object."""
+    def save(self, filething, compression=XQAFCompressionMode.KEEP, gapless=None):
+        """Save the Vorbis comment to a file-like object.
+
+        The file-like object must be a valid XQAF file.
+
+        Args:
+            filething (filething): a writable file-like object.
+            compression (XQAFCompressionMode): the compression mode to use for the tags.
+            gapless (bool): if None, the gapless flag in the file is left untouched.
+                            Otherwise it gets set or unset depending on the boolean value.
+        """
         f = filething.fileobj
         info = XQAFInfo(f)
 
@@ -185,6 +194,13 @@ class XQAFVCommentDict(VCommentDict):
         data_offset = info._data_offset
         tag_offset = info._tag_offset
         new_flags = info._flags
+
+        # If gapless is specified, set the gapless flag
+        if gapless is not None:
+            if gapless:
+                new_flags |= XQAFFlags.GAPLESS
+            else:
+                new_flags &= ~XQAFFlags.GAPLESS
 
         # If compression is enabled, compress the tag data
         if compression == XQAFCompressionMode.ZSTANDARD or (
@@ -303,8 +319,16 @@ class XQAF(FileType):
             raise XQAFError(e)
 
     @loadfile(writable=True)
-    def save(self, filething=None, compression=XQAFCompressionMode.KEEP):
-        super().save(filething, compression=compression)
+    def save(self, filething=None, compression=XQAFCompressionMode.KEEP, gapless=None):
+        """Save the tags to the XQAF file.
+
+        Args:
+            filething (filething): a writable file-like object.
+            compression (XQAFCompressionMode): the compression mode to use for the tags.
+            gapless (bool): if None, the gapless flag in the file is left untouched.
+                            Otherwise it gets set or unset depending on the boolean value.
+        """
+        super().save(filething, compression=compression, gapless=gapless)
 
     def add_tags(self):
         """Add empty tags to the file."""

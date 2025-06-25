@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>442</width>
-    <height>364</height>
+    <width>602</width>
+    <height>555</height>
    </rect>
   </property>
   <layout class="QVBoxLayout">
@@ -138,6 +138,13 @@ QCheckBox { color: black }</string>
           </widget>
          </item>
         </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QCheckBox" name="xqaf_update_gapless_flag">
+        <property name="text">
+         <string>Update the gapless flag on saving</string>
+        </property>
        </widget>
       </item>
      </layout>

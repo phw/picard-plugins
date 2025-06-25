@@ -14,7 +14,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_XQAFOptionsPage(object):
     def setupUi(self, XQAFOptionsPage):
         XQAFOptionsPage.setObjectName("XQAFOptionsPage")
-        XQAFOptionsPage.resize(442, 364)
+        XQAFOptionsPage.resize(602, 555)
         self.vboxlayout = QtWidgets.QVBoxLayout(XQAFOptionsPage)
         self.vboxlayout.setContentsMargins(9, 9, 9, 9)
         self.vboxlayout.setSpacing(6)
@@ -61,6 +61,9 @@ class Ui_XQAFOptionsPage(object):
         self.xqaf_compression_none.setObjectName("xqaf_compression_none")
         self.verticalLayout.addWidget(self.xqaf_compression_none)
         self.vboxlayout1.addWidget(self.xqaf_compression_mode)
+        self.xqaf_update_gapless_flag = QtWidgets.QCheckBox(self.groupBox)
+        self.xqaf_update_gapless_flag.setObjectName("xqaf_update_gapless_flag")
+        self.vboxlayout1.addWidget(self.xqaf_update_gapless_flag)
         self.vboxlayout.addWidget(self.groupBox)
         spacerItem1 = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
         self.vboxlayout.addItem(spacerItem1)
@@ -76,3 +79,4 @@ class Ui_XQAFOptionsPage(object):
         self.xqaf_compression_keep.setText(_translate("XQAFOptionsPage", "Keep compression as is"))
         self.xqaf_compression_compress.setText(_translate("XQAFOptionsPage", "Always compress tags"))
         self.xqaf_compression_none.setText(_translate("XQAFOptionsPage", "Never compress tags"))
+        self.xqaf_update_gapless_flag.setText(_translate("XQAFOptionsPage", "Update the gapless flag on saving"))
