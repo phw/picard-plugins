@@ -34,14 +34,17 @@ PLUGIN_LICENSE = "GPL-2.0"
 PLUGIN_LICENSE_URL = "https://www.gnu.org/licenses/gpl-2.0.html"
 
 
+from picard.config import get_config, IntOption
 from picard.formats import register_format
 from picard.file import File
 from picard.formats.vorbis import VCommentFile
 from picard import log
 from picard.metadata import Metadata
+from picard.ui.options import register_options_page, OptionsPage
 
 from .qoa import QOA
-from .xqaf import XQAF
+from .xqaf import XQAF, XQAFCompressionMode, zstd
+from .ui_options_xqaf import Ui_XQAFOptionsPage
 
 
 class QOAFile(File):
@@ -67,11 +70,21 @@ class QOAFile(File):
 
 
 class XQAFFile(VCommentFile):
-
     """Extended QOA Format file."""
+
+    class XQAFWithConfig(XQAF):
+        def __init__(self, *args, **kwargs):
+            self._config = get_config()
+            super().__init__(*args, **kwargs)
+
+        def save(self, filething=None):
+            compression = XQAFCompressionMode(self._config.setting["xqaf_compression_mode"])
+            super().save(filething, compression=compression)
+
+
     EXTENSIONS = [".xqa", ".xqaf"]
     NAME = "Extended QOA Format"
-    _File = XQAF
+    _File = XQAFWithConfig
 
     def _save(self, filename, metadata):
         # Do not store the gapless tag in the metadata.
@@ -88,3 +101,49 @@ class XQAFFile(VCommentFile):
 
 register_format(QOAFile)
 register_format(XQAFFile)
+
+
+class XQAFOptionsPage(OptionsPage):
+
+    NAME = "xqaf"
+    TITLE = "XQAF"
+    PARENT = "plugins"
+    ACTIVE = True
+
+    options = [
+        IntOption("setting", "xqaf_compression_mode", XQAFCompressionMode.KEEP.value)
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.ui = Ui_XQAFOptionsPage()
+        self.ui.setupUi(self)
+        if not zstd:
+            self.ui.xqaf_compression_mode.setEnabled(False)
+            self.ui.xqaf_compression_disabled_note.setHidden(False)
+        else:
+            self.ui.xqaf_compression_mode.setEnabled(True)
+            self.ui.xqaf_compression_disabled_note.setHidden(True)
+
+    def load(self):
+        config = get_config()
+        compression_mode = XQAFCompressionMode(config.setting["xqaf_compression_mode"])
+        if compression_mode == XQAFCompressionMode.NONE:
+            self.ui.xqaf_compression_none.setChecked(True)
+        elif compression_mode == XQAFCompressionMode.ZSTANDARD:
+            self.ui.xqaf_compression_compress.setChecked(True)
+        elif compression_mode == XQAFCompressionMode.KEEP:
+            self.ui.xqaf_compression_keep.setChecked(True)
+
+    def save(self):
+        config = get_config()
+        if self.ui.xqaf_compression_none.isChecked():
+            compression_mode = XQAFCompressionMode.NONE
+        elif self.ui.xqaf_compression_compress.isChecked():
+            compression_mode = XQAFCompressionMode.ZSTANDARD
+        else:
+            compression_mode = XQAFCompressionMode.KEEP
+        config.setting["xqaf_compression_mode"] = compression_mode.value
+
+
+register_options_page(XQAFOptionsPage)

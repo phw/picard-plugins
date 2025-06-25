@@ -52,13 +52,13 @@ class XQAFCompressionMode(Enum):
     """XQAF tag compression modes.
 
     NONE: Do not compress the tags.
-    COMPRESS: Compress the tags using zstandard.
     KEEP: Compress the tags if the existing tags in the file are compressed,
           otherwise do not compress them.
+    ZSTANDARD: Compress the tags using zstandard.
     """
     NONE = 0
-    COMPRESS = 1
-    KEEP = 2
+    KEEP = 1
+    ZSTANDARD = 2
 
 
 class XQAFFlags(IntFlag):
@@ -185,7 +185,7 @@ class XQAFVCommentDict(VCommentDict):
         new_flags = info._flags
 
         # If compression is enabled, compress the tag data
-        if compression == XQAFCompressionMode.COMPRESS or (
+        if compression == XQAFCompressionMode.ZSTANDARD or (
             compression == XQAFCompressionMode.KEEP and info._flags.is_compressed):
             if not zstd:
                 raise XQAFError("Compression of XQAF tags unavailable (requires zstandard)")
