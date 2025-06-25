@@ -26,7 +26,13 @@ except ImportError:
 
 from mutagen import FileType, MutagenError, StreamInfo
 from mutagen._vorbis import VCommentDict
-from mutagen._util import loadfile, insert_bytes, intround, resize_bytes
+from mutagen._util import (
+    delete_bytes,
+    insert_bytes,
+    intround,
+    loadfile,
+    resize_bytes,
+)
 
 
 _XQAF_BASE_HEADER_SIZE = 10
@@ -151,12 +157,22 @@ class XQAFInfo(StreamInfo):
         """Check if the XQAF file has tags."""
         return self._tag_offset > 0 and self._tag_length > 0
 
+    @property
+    def _header_tag_offset_position(self) -> int:
+        """Get the position of the tag offset in the header."""
+        if self._flags.is_64bit:
+            return 34
+        else:
+            return 26
+
 
 class XQAFVCommentDict(VCommentDict):
 
-    def load(self, fileobj, errors='replace'):
-        super().load(fileobj, errors=errors, framing=False)
+    @loadfile()
+    def load(self, filething, errors='replace'):
+        super().load(filething.fileobj, errors=errors, framing=False)
 
+    @loadfile(writable=True)
     def save(self, filething, compression=XQAFCompressionMode.KEEP):
         """Save the Vorbis comment to a file-like object."""
         f = filething.fileobj
@@ -205,24 +221,31 @@ class XQAFVCommentDict(VCommentDict):
 
         # In 64-bit mode the offsets and length fields are 64-bit, with the exception
         # of the tag length which is always 32-bit.
-        if info._flags.is_64bit:
-            tag_offset_position = 34
-            format = ">Q"
-        else:
-            tag_offset_position = 26
-            format = ">I"
+        format = ">Q" if info._flags.is_64bit else ">I"
 
         # Update the data offsets and length in the file header
         self._update_flags(f, new_flags)
         f.seek(18)
         f.write(struct.pack(format, data_offset))
-        f.seek(tag_offset_position)  # Skip the data length, it hasn't changed
+        f.seek(info._header_tag_offset_position)  # Skip the data length, it hasn't changed
         f.write(struct.pack(format, tag_offset))
         f.write(struct.pack(">I", new_size))
 
         # Write the Vorbis comment data
         f.seek(tag_offset)
         f.write(tag_data)
+
+    @loadfile(writable=True)
+    def delete(self, filething=None):
+        self.clear()
+        f = filething.fileobj
+        info = XQAFInfo(f)
+        if not info._has_existing_tags:
+            return
+        delete_bytes(f, info._tag_length, info._tag_offset)
+        f.seek(info._header_tag_offset_position)
+        format = ">QI" if info._flags.is_64bit else ">II"
+        f.write(struct.pack(format, 0, 0))
 
     @staticmethod
     def _update_flags(fileobj, flags: XQAFFlags):
