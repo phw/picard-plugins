@@ -38,6 +38,9 @@ _MAX_UINT32 = 0xFFFFFFFF
 class XQAFError(MutagenError):
     pass
 
+class XQAFInvalidHeaderError(XQAFError):
+    pass
+
 
 class XQAFCompressionMode(Enum):
     """XQAF tag compression modes.
@@ -94,7 +97,7 @@ class XQAFInfo(StreamInfo):
         # See spec at https://chiselapp.com/user/MistressRemilia/repository/cl-remiaudio/file?name=docs/extended-qoa-format.md&ci=tip
         header = fileobj.read(_XQAF_BASE_HEADER_SIZE)
         if not header.startswith(b"XQAF") or len(header) < _XQAF_BASE_HEADER_SIZE:
-            raise XQAFError("Invalid XQAF header")
+            raise XQAFInvalidHeaderError("Invalid XQAF header")
 
         _major, _minor, flags = struct.unpack(">ccI", header[4:])
         self._flags = XQAFFlags(flags)
@@ -109,9 +112,23 @@ class XQAFInfo(StreamInfo):
 
         extended_header = fileobj.read(header_length)
         if len(extended_header) != header_length:
-            raise XQAFError("Insufficient data for reading XQAF header")
+            raise XQAFInvalidHeaderError("Insufficient data for reading XQAF header")
         (sample_rate, number_of_samples, channels, data_offset, data_length,
          tag_offset, tag_length) = struct.unpack(header_format, extended_header)
+
+        # Validate the header data. Proceeding with invalid offsets or lengths
+        # could lead to undefined behavior and potentially damage the file.
+        if number_of_samples == 0:
+            raise XQAFInvalidHeaderError("Sample count is zero")
+        elif data_length == 0:
+            raise XQAFInvalidHeaderError("QOA data size is zero")
+        elif data_offset < _XQAF_BASE_HEADER_SIZE + header_length:
+            raise XQAFInvalidHeaderError("Data offset is smaller than header size")
+        elif tag_offset != 0 and tag_offset < _XQAF_BASE_HEADER_SIZE + header_length:
+            raise XQAFInvalidHeaderError("Tag offset is smaller than header size")
+        elif (data_offset <= tag_offset < data_offset + data_length
+              or data_offset < tag_offset + tag_length < data_offset + data_length):
+            raise XQAFInvalidHeaderError("Tag block overlaps with data block")
 
         self.sample_rate = int.from_bytes(sample_rate, 'big')
         self.channels = channels
