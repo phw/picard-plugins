@@ -92,6 +92,7 @@ class XQAFInfo(StreamInfo):
       length (`float`): file length in seconds, as a float
       sample_rate (`int`): audio sampling rate in Hz
       bitrate (`int`): audio bitrate, in bits per second
+      version (`tuple(int, int)`): XQAF version
       gapless (`bool`): indicates whether the audio is supposed to be played gaplessly
     """
 
@@ -105,7 +106,7 @@ class XQAFInfo(StreamInfo):
         if not header.startswith(b"XQAF") or len(header) < _XQAF_BASE_HEADER_SIZE:
             raise XQAFInvalidHeaderError("Invalid XQAF header")
 
-        _major, _minor, flags = struct.unpack(">ccI", header[4:])
+        major, minor, flags = struct.unpack(">ccI", header[4:])
         self._flags = XQAFFlags(flags)
 
         header_length = _XQAF_EXTENDED_HEADER_SIZE_32
@@ -136,6 +137,7 @@ class XQAFInfo(StreamInfo):
               or data_offset < tag_offset + tag_length < data_offset + data_length):
             raise XQAFInvalidHeaderError("Tag block overlaps with data block")
 
+        self.version = (ord(major), ord(minor))
         self.sample_rate = int.from_bytes(sample_rate, 'big')
         self.channels = channels
         self.gapless = self._flags.is_gapless

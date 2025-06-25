@@ -95,6 +95,7 @@ class XQAFFile(VCommentFile):
 
     def _info(self, metadata, file):
         super()._info(metadata, file)
+        metadata['~format'] = "Extended QOA Format %d.%d" % file.info.version
         if file.info.gapless:
             metadata.set("gapless", 1)
 
